@@ -67,3 +67,29 @@ def test_synonyms_only_used_if_field_exists():
     # "brand" -> id_manufacturer only if that field is in the schema.
     matches = _by_header(mapper.match_headers(["brand"], ["reference", "name"]))
     assert matches["brand"].field is None
+
+
+def test_prestashop_import_template_labels():
+    """Headers from PrestaShop's own import template (with (…) hints, *, #)."""
+    ps = ["id", "active", "name", "price", "reference", "supplier_reference",
+          "quantity", "visibility", "description_short", "available_for_order",
+          "show_price", "available_now"]
+    headers = ["Active (0/1)", "Name*", "Price tax included", "Reference #",
+               "Supplier reference #", "Quantity", "Visibility", "Summary",
+               "Available for order (0 = No, 1 = Yes)", "Show price (0 = No, 1 = Yes)",
+               "Label when in stock"]
+    by = {m.header: m for m in mapper.match_headers(headers, ps)}
+    assert by["Active (0/1)"].field == "active"
+    assert by["Name*"].field == "name"
+    assert by["Reference #"].field == "reference"
+    assert by["Available for order (0 = No, 1 = Yes)"].field == "available_for_order"
+    assert by["Show price (0 = No, 1 = Yes)"].field == "show_price"
+    assert by["Price tax included"].field == "price"
+    assert by["Label when in stock"].field == "available_now"
+
+
+def test_normalize_strips_hints():
+    assert mapper.normalize("Active (0/1)") == "active"
+    assert mapper.normalize("Name*") == "name"
+    assert mapper.normalize("Reference #") == "reference"
+    assert mapper.normalize("Categories (x,y,z...)") == "categories"

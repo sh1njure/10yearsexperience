@@ -48,9 +48,23 @@ class Match:
 
 
 def normalize(text: str) -> str:
-    """Lowercase and strip spaces, underscores and punctuation."""
+    """Normalise a header/field name for matching.
+
+    Besides lowercasing and stripping spaces/underscores/punctuation, this drops
+    the "hint" noise common in PrestaShop's own import template so labels line up
+    with API field names, e.g.:
+
+        "Active (0/1)"                       -> "active"
+        "Available for order (0 = No, 1=Yes)"-> "availablefororder"
+        "Categories (x,y,z...)"              -> "categories"
+        "Name*", "Reference #"               -> "name", "reference"
+    """
     text = (text or "").lower().strip()
-    return re.sub(r"[\s_\-./]+", "", re.sub(r"[^\w\s]", "", text))
+    text = re.sub(r"\(.*?\)", " ", text)   # drop (…) parenthetical hints
+    text = re.sub(r"\[.*?\]", " ", text)   # drop […] hints
+    text = text.replace("*", " ").replace("#", " ")  # required/number markers
+    text = re.sub(r"[^\w\s]", "", text)    # drop remaining punctuation
+    return re.sub(r"[\s_\-./]+", "", text)
 
 
 def load_synonyms(path: str | Path = DEFAULT_SYNONYMS_PATH) -> dict[str, list[str]]:
