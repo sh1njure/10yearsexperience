@@ -62,6 +62,7 @@ class RunIn(BaseModel):
     dry_run: bool = True
     concurrency: int = 2
     scope: list[str] = ["products"]
+    create_missing: bool = False
     profile_name: str | None = None
 
 
@@ -87,6 +88,7 @@ async def run(token: str, payload: RunIn):
         concurrency=max(1, min(payload.concurrency, 5)),
         lang_id=s.default_lang_id,
         scope=set(payload.scope),
+        create_missing=payload.create_missing,
     )
     run_id = db.create_run(payload.mode, payload.dry_run, len(rows),
                            payload.profile_name)

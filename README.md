@@ -134,6 +134,25 @@ Auth is HTTP Basic: **the API key is the username, the password is empty.**
 8. **Results + history** — per-row success/failure with the PrestaShop error
    message, downloadable as CSV. Every run is logged to SQLite.
 
+## Name resolution & associations
+
+Supplier sheets (including PrestaShop's own import template) use **names**, not
+IDs. The importer resolves them against the live shop and builds the correct
+association structures:
+
+| Column | Resolved to |
+|--------|-------------|
+| Categories (`Home,Lighting,…`) | category IDs → `<associations><categories>` + `id_category_default` |
+| Brand (`Fumagalli`) | manufacturer ID → `id_manufacturer` |
+| Tags (`x,y,z`) | tag IDs → `<associations><tags>` |
+| Features (`Name:Value:Pos:Custom,…`) | feature + feature-value IDs → `<associations><product_features>` |
+| Image URLs (`http…,http…`) | downloaded and POSTed to `/api/images/products/{id}` |
+
+Tick **"Create missing categories/brands/tags/features"** on the Import tab to
+create records that don't exist yet (otherwise unknown names are skipped and
+reported per row). In **dry run** nothing is created — names are only looked up,
+and the row note tells you what would be created on a live run.
+
 ## PrestaShop API rules respected
 
 - Always fetch `?schema=blank` and fill the skeleton — XML is **never**

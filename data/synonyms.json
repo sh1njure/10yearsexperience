@@ -27,5 +27,9 @@
   "link_rewrite": ["slug", "url key", "link", "url"],
   "meta_title": ["meta title", "seo title"],
   "meta_description": ["meta description", "seo description"],
-  "supplier_reference": ["supplier reference", "supplier ref", "supplier sku"]
+  "supplier_reference": ["supplier reference", "supplier ref", "supplier sku"],
+  "categories": ["categories", "category list", "category tree", "cat"],
+  "tags": ["tags", "keywords", "labels"],
+  "images": ["image urls", "image url", "images", "image", "picture", "pictures", "photos", "photo", "img"],
+  "features": ["feature", "features", "attributes", "specifications", "specs", "characteristics"]
 }

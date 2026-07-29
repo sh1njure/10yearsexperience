@@ -19,6 +19,7 @@ from enum import Enum
 from typing import Awaitable, Callable
 
 from .api_client import PrestaShopClient, PrestaShopError
+from .resolver import Resolver, parse_features, split_list
 from . import xml_builder
 
 
@@ -39,6 +40,12 @@ class RowResult:
     payload: str | None = None     # populated in dry-run mode
 
 
+# Mapped column keys that are associations/relations, not plain product fields.
+# They are resolved by name into IDs (see app.resolver) and injected as
+# <associations>, never written as simple element text.
+SPECIAL_FIELDS = {"categories", "tags", "images", "features"}
+
+
 @dataclass
 class ImportConfig:
     mode: Mode = Mode.UPSERT
@@ -47,6 +54,8 @@ class ImportConfig:
     lang_id: int = 1
     max_retries: int = 3
     scope: set[str] = field(default_factory=lambda: {"products"})
+    # Create categories/brands/tags/features that don't exist yet.
+    create_missing: bool = False
 
 
 ProgressCb = Callable[[RowResult], Awaitable[None]] | None
@@ -77,6 +86,11 @@ class Importer:
         self.client = client
         self.config = config
         self._blank_product_schema: str | None = None
+        # In dry run we resolve names (read-only lookups) but never create.
+        self.resolver = Resolver(
+            client, lang_id=config.lang_id,
+            create_missing=config.create_missing and not config.dry_run,
+        )
 
     async def _product_schema(self) -> str:
         if self._blank_product_schema is None:
@@ -101,17 +115,78 @@ class Importer:
         await asyncio.gather(*(worker(i, r) for i, r in enumerate(rows)))
         return [r for r in results if r is not None]
 
+    async def _prepare(self, row: dict[str, object]) -> tuple[dict, dict, list[str], list[str]]:
+        """Split a row into (simple fields, associations, image URLs, notes).
+
+        Resolves category/brand/tag/feature names to IDs. Notes record names
+        that could not be resolved (surfaced in the row result).
+        """
+        simple = {k: v for k, v in row.items()
+                  if k not in SPECIAL_FIELDS and v not in (None, "")}
+        associations: dict[str, object] = {}
+        image_urls: list[str] = []
+        notes: list[str] = []
+
+        # Brand: id_manufacturer may arrive as a name -> resolve to an id.
+        man = simple.get("id_manufacturer")
+        if man is not None and not str(man).strip().isdigit():
+            mid = await self.resolver.resolve_manufacturer(str(man))
+            if mid:
+                simple["id_manufacturer"] = str(mid)
+            else:
+                simple.pop("id_manufacturer", None)
+                notes.append(f"brand '{man}' not found")
+
+        # Categories: names -> ids; also default the primary category.
+        if "categories" in row and str(row["categories"]).strip():
+            names = split_list(str(row["categories"]))
+            ids = await self.resolver.resolve_categories(names)
+            if ids:
+                associations["categories"] = ids
+                simple.setdefault("id_category_default", str(ids[-1]))
+            missing = len(names) - len(ids)
+            if missing:
+                notes.append(f"{missing} categor{'y' if missing == 1 else 'ies'} not found")
+
+        # Tags
+        if "tags" in row and str(row["tags"]).strip():
+            tag_ids = await self.resolver.resolve_tags(split_list(str(row["tags"])))
+            if tag_ids:
+                associations["tags"] = tag_ids
+
+        # Features "Name:Value:Pos:Custom,..."
+        if "features" in row and str(row["features"]).strip():
+            specs = parse_features(str(row["features"]))
+            pairs = await self.resolver.resolve_features(specs)
+            if pairs:
+                associations["product_features"] = pairs
+            if len(pairs) < len(specs):
+                notes.append(f"{len(specs) - len(pairs)} feature(s) unresolved")
+
+        # Images: collect URLs, uploaded after the product exists.
+        if "images" in row and str(row["images"]).strip():
+            image_urls = split_list(str(row["images"]))
+
+        return simple, associations, image_urls, notes
+
     async def _process_row(self, index: int, row: dict[str, object]) -> RowResult:
         reference = str(row.get("reference", "")).strip()
         try:
             schema = await self._product_schema()
+            simple, associations, image_urls, notes = await self._prepare(row)
 
             if self.config.dry_run:
                 payload = xml_builder.build_create_xml(
-                    schema, row, lang_id=self.config.lang_id,
+                    schema, simple, lang_id=self.config.lang_id,
+                    associations=associations,
                 )
-                return RowResult(index, reference, "dry-run", True,
-                                 "Payload built (not sent).", payload=payload)
+                msg = "Payload built (not sent)."
+                if image_urls:
+                    msg += f" {len(image_urls)} image(s) would upload."
+                if notes:
+                    msg += " Note: " + "; ".join(notes) + "."
+                return RowResult(index, reference, "dry-run", True, msg,
+                                 payload=payload)
 
             existing_id = None
             if self.config.mode in (Mode.UPDATE_ONLY, Mode.UPSERT) and reference:
@@ -121,12 +196,14 @@ class Importer:
                 if self.config.mode == Mode.CREATE_ONLY:
                     return RowResult(index, reference, "skipped", True,
                                      "Exists; create-only mode.")
-                return await self._update(index, reference, existing_id, row)
+                return await self._update(index, reference, existing_id, simple,
+                                          associations, image_urls, row, notes)
 
             if self.config.mode == Mode.UPDATE_ONLY:
                 return RowResult(index, reference, "skipped", True,
                                  "Not found; update-only mode.")
-            return await self._create(index, reference, row, schema)
+            return await self._create(index, reference, simple, associations,
+                                      image_urls, schema, row, notes)
 
         except PrestaShopError as exc:
             return RowResult(index, reference, "error", False,
@@ -146,36 +223,74 @@ class Importer:
             return int(pid) if pid else None
         return None
 
-    async def _create(self, index: int, reference: str, row: dict[str, object],
-                      schema: str) -> RowResult:
+    async def _create(self, index: int, reference: str, simple: dict,
+                      associations: dict, image_urls: list[str], schema: str,
+                      row: dict, notes: list[str]) -> RowResult:
         payload = xml_builder.build_create_xml(
-            schema, row, lang_id=self.config.lang_id,
+            schema, simple, lang_id=self.config.lang_id,
+            associations=associations,
         )
         created = await _with_retry(
             lambda: self.client.create("products", payload),
             max_retries=self.config.max_retries,
         )
         product_id = created.get("id")
-        if product_id and "stock" in self.config.scope and "quantity" in row:
-            await self._set_stock(product_id, row.get("quantity"))
+        extra = await self._post_write(product_id, row, image_urls)
         return RowResult(index, reference, "created", True,
-                         "Created.", product_id=product_id)
+                         self._msg("Created.", notes, extra),
+                         product_id=product_id)
 
     async def _update(self, index: int, reference: str, product_id: int,
-                      row: dict[str, object]) -> RowResult:
+                      simple: dict, associations: dict, image_urls: list[str],
+                      row: dict, notes: list[str]) -> RowResult:
         # GET the full resource, modify mapped fields, PUT it all back.
         existing = await self.client.get_xml(f"products/{product_id}")
         payload = xml_builder.build_update_xml(
-            existing, row, lang_id=self.config.lang_id,
+            existing, simple, lang_id=self.config.lang_id,
         )
         await _with_retry(
             lambda: self.client.update("products", product_id, payload),
             max_retries=self.config.max_retries,
         )
-        if "stock" in self.config.scope and "quantity" in row:
-            await self._set_stock(product_id, row.get("quantity"))
+        extra = await self._post_write(product_id, row, image_urls)
         return RowResult(index, reference, "updated", True,
-                         "Updated.", product_id=product_id)
+                         self._msg("Updated.", notes, extra),
+                         product_id=product_id)
+
+    async def _post_write(self, product_id: int | None, row: dict,
+                          image_urls: list[str]) -> list[str]:
+        """Stock + image steps that need the product id (after create/update)."""
+        extra: list[str] = []
+        if not product_id:
+            return extra
+        if "stock" in self.config.scope and str(row.get("quantity", "")).strip():
+            await self._set_stock(product_id, row.get("quantity"))
+        if image_urls and "images" in self.config.scope:
+            ok = await self._upload_images(product_id, image_urls)
+            extra.append(f"{ok}/{len(image_urls)} image(s) uploaded")
+        return extra
+
+    async def _upload_images(self, product_id: int, urls: list[str]) -> int:
+        uploaded = 0
+        for url in urls:
+            try:
+                data, filename, ctype = await self.resolver.fetch_image(url)
+                await _with_retry(
+                    lambda d=data, f=filename, c=ctype:
+                        self.client.upload_image(product_id, d, f, c),
+                    max_retries=self.config.max_retries,
+                )
+                uploaded += 1
+            except Exception:
+                continue  # continue-on-error per image
+        return uploaded
+
+    @staticmethod
+    def _msg(base: str, notes: list[str], extra: list[str]) -> str:
+        parts = [base] + extra
+        if notes:
+            parts.append("Note: " + "; ".join(notes))
+        return " ".join(parts)
 
     async def _set_stock(self, product_id: int, quantity: object) -> None:
         """Set quantity via stock_availables (never on the product itself)."""

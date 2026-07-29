@@ -258,6 +258,7 @@ $("#btnRun").addEventListener("click", () => {
     dry_run: $("#dryRun").checked,
     concurrency: parseInt($("#concurrency").value, 10) || 2,
     scope,
+    create_missing: $("#createMissing").checked,
   };
   runImport(payload);
 });

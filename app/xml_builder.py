@@ -86,8 +86,15 @@ def _apply_values(resource_el: ET.Element, values: dict[str, object],
 
 def build_create_xml(blank_schema_xml: str, values: dict[str, object], *,
                      multilingual_fields: set[str] | None = None,
-                     lang_id: int = 1) -> str:
-    """Return XML for a POST, built from the blank schema and mapped values."""
+                     lang_id: int = 1,
+                     associations: dict[str, object] | None = None) -> str:
+    """Return XML for a POST, built from the blank schema and mapped values.
+
+    ``associations`` optionally carries resolved relations to inject:
+        {"categories": [2, 5],
+         "tags": [10, 11],
+         "product_features": [(feat_id, value_id), ...]}
+    """
     root = ET.fromstring(blank_schema_xml)
     resource_el = next(iter(root), None)
     if resource_el is None:
@@ -95,7 +102,43 @@ def build_create_xml(blank_schema_xml: str, values: dict[str, object], *,
 
     multilingual = multilingual_fields or _detect_multilingual(resource_el)
     _apply_values(resource_el, values, multilingual, lang_id)
+    if associations:
+        _set_associations(resource_el, associations)
     return _serialize(root)
+
+
+def _set_associations(resource_el: ET.Element, associations: dict[str, object]) -> None:
+    """Replace/add the <associations> block with resolved relations."""
+    # Remove any skeleton associations element and rebuild cleanly.
+    for existing in [el for el in resource_el if _localname(el.tag) == "associations"]:
+        resource_el.remove(existing)
+    assoc_el = ET.SubElement(resource_el, "associations")
+
+    categories = associations.get("categories") or []
+    if categories:
+        cats = ET.SubElement(assoc_el, "categories")
+        for cid in categories:
+            c = ET.SubElement(cats, "category")
+            ET.SubElement(c, "id").text = str(cid)
+
+    tags = associations.get("tags") or []
+    if tags:
+        tags_el = ET.SubElement(assoc_el, "tags")
+        for tid in tags:
+            t = ET.SubElement(tags_el, "tag")
+            ET.SubElement(t, "id").text = str(tid)
+
+    features = associations.get("product_features") or []
+    if features:
+        feats = ET.SubElement(assoc_el, "product_features")
+        for feat_id, value_id in features:
+            pf = ET.SubElement(feats, "product_feature")
+            ET.SubElement(pf, "id").text = str(feat_id)
+            ET.SubElement(pf, "id_feature_value").text = str(value_id)
+
+    # If nothing was added, drop the empty element again.
+    if len(assoc_el) == 0:
+        resource_el.remove(assoc_el)
 
 
 def build_update_xml(existing_resource_xml: str, values: dict[str, object], *,

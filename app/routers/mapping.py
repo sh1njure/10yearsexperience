@@ -26,7 +26,14 @@ async def automatch(token: str, resource: str = "products") -> dict:
         except PrestaShopError as exc:
             raise HTTPException(502, f"Could not fetch schema: {exc}") from exc
 
+    # Augment the live product fields with synthetic association targets so the
+    # user can map Categories / Tags / Images / Features columns too. The
+    # importer resolves these names to IDs at import time.
     field_names = schema.field_names()
+    if resource == "products":
+        for special in ("categories", "tags", "images", "features"):
+            if special not in field_names:
+                field_names = field_names + [special]
     matches = mapper.match_headers(session.headers, field_names)
     return {
         "resource": resource,
