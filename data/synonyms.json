@@ -31,5 +31,11 @@
   "categories": ["categories", "category list", "category tree", "cat"],
   "tags": ["tags", "keywords", "labels"],
   "images": ["image urls", "image url", "images", "image", "picture", "pictures", "photos", "photo", "img"],
-  "features": ["feature", "features", "attributes", "specifications", "specs", "characteristics"]
+  "features": ["feature", "features", "specifications", "specs", "characteristics"],
+  "product_reference": ["product reference", "parent reference", "product ref", "parent ref"],
+  "attributes": ["attribute", "attributes", "attribute name type position"],
+  "values": ["value", "values", "value position", "attribute value"],
+  "price_impact": ["impact on price", "price impact", "impact price"],
+  "minimal_quantity": ["minimal quantity", "min quantity", "minimum quantity"],
+  "default": ["default", "is default", "default combination"]
 }

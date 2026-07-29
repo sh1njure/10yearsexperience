@@ -153,6 +153,22 @@ create records that don't exist yet (otherwise unknown names are skipped and
 reported per row). In **dry run** nothing is created — names are only looked up,
 and the row note tells you what would be created on a live run.
 
+### Combinations (variants)
+
+Set **Import type = Combinations** on the Mapping tab to import a variants sheet.
+Each row is one combination linked to its parent product by reference:
+
+| Column | Used for |
+|--------|----------|
+| Product Reference | parent product lookup (`id_product`) |
+| Attribute (`Name:Type:Position`) + Value (`Value:Position`) | attribute groups + values (created when "Create missing" is on) |
+| Reference / Supplier reference / EAN13 | combination identity |
+| Impact on price | combination `price` (delta) |
+| Quantity | stock for the combination (via stock_availables) |
+| Minimal quantity, Default (0/1) | `minimal_quantity`, `default_on` |
+
+Import products **first**, then combinations, so the parent products exist.
+
 ## PrestaShop API rules respected
 
 - Always fetch `?schema=blank` and fill the skeleton — XML is **never**

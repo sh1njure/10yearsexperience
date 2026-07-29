@@ -146,7 +146,8 @@ $("#btnAutomatch").addEventListener("click", async () => {
   if (!S.token || !S.headers.length) { $("#mapWrap").textContent = "Upload & parse a file first."; return; }
   $("#mapWrap").textContent = "Matching…";
   try {
-    const data = await api(`/api/mapping/${S.token}/automatch`, { method: "POST", body: "{}" });
+    const it = $("#importType").value;
+    const data = await api(`/api/mapping/${S.token}/automatch?import_type=${it}`, { method: "POST", body: "{}" });
     S.psFields = data.ps_fields;
     S.matches = data.matches;
     renderMatches();
@@ -261,6 +262,7 @@ $("#btnRun").addEventListener("click", () => {
     create_missing: $("#createMissing").checked,
     price_includes_tax: $("#priceInclTax").checked,
     tax_rate: parseFloat($("#taxRate").value) || 0,
+    import_type: $("#importType").value,
   };
   runImport(payload);
 });

@@ -74,7 +74,15 @@
       <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
         <div class="flex items-center justify-between">
           <h2 class="font-semibold text-slate-900">Field mapping</h2>
-          <button id="btnAutomatch" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Auto-match</button>
+          <div class="flex items-center gap-2">
+            <label class="text-sm text-slate-600">Import type
+              <select id="importType" class="ml-1 rounded border border-slate-300 px-2 py-1 text-sm">
+                <option value="products">Products</option>
+                <option value="combinations">Combinations (variants)</option>
+              </select>
+            </label>
+            <button id="btnAutomatch" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Auto-match</button>
+          </div>
         </div>
         <div id="mapWrap" class="overflow-x-auto text-sm text-slate-500">Upload &amp; parse a file, then auto-match.</div>
         <div class="flex gap-2 items-end flex-wrap border-t border-slate-100 pt-4">

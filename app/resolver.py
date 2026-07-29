@@ -66,6 +66,44 @@ def split_list(raw: str) -> list[str]:
     return [p.strip() for p in str(raw).split(",") if p.strip()]
 
 
+@dataclass
+class AttributePair:
+    group_name: str
+    group_type: str          # select | radio | color
+    group_position: str
+    value_name: str
+    value_position: str
+
+
+def _split_value_pos(item: str) -> tuple[str, str]:
+    """Split "Name:0" -> ("Name", "0"); keep colons inside the name."""
+    parts = item.split(":")
+    if len(parts) >= 2 and parts[-1].strip().lstrip("-").isdigit():
+        return ":".join(parts[:-1]).strip(), parts[-1].strip()
+    return item.strip(), "0"
+
+
+def parse_attribute_pairs(attr_cell: str, value_cell: str) -> list[AttributePair]:
+    """Pair up the two combination columns into (group, value) attributes.
+
+    ``attr_cell``  = "Colour:color:0, Configuration:select:1"
+    ``value_cell`` = "Black:0, Lantern head only:0"
+    -> [Colour/color = Black, Configuration/select = Lantern head only]
+    """
+    attrs = [a.strip() for a in (attr_cell or "").split(",") if a.strip()]
+    values = [v.strip() for v in (value_cell or "").split(",") if v.strip()]
+    pairs: list[AttributePair] = []
+    for attr, value in zip(attrs, values):
+        a_parts = attr.split(":")
+        group_name = a_parts[0].strip()
+        group_type = a_parts[1].strip() if len(a_parts) >= 2 else "select"
+        group_pos = a_parts[2].strip() if len(a_parts) >= 3 else "0"
+        value_name, value_pos = _split_value_pos(value)
+        pairs.append(AttributePair(group_name, group_type or "select",
+                                   group_pos, value_name, value_pos))
+    return pairs
+
+
 class Resolver:
     def __init__(self, client: PrestaShopClient, *, lang_id: int = 1,
                  create_missing: bool = False):
@@ -77,6 +115,8 @@ class Resolver:
         self._tag_cache: dict[str, int | None] = {}
         self._feat_cache: dict[str, int | None] = {}
         self._featval_cache: dict[tuple[int, str], int | None] = {}
+        self._group_cache: dict[str, int | None] = {}
+        self._value_cache: dict[tuple[int, str], int | None] = {}
         self._schemas: dict[str, str] = {}
 
     # ------------------------------------------------------------------ #
@@ -211,6 +251,66 @@ class Resolver:
             vid = result.get("id")
         self._featval_cache[cache_key] = vid
         return vid
+
+    # ---------------------- attributes (combinations) ----------------- #
+    async def resolve_attribute_value_ids(self, pairs: list[AttributePair]) -> list[int]:
+        """Resolve (and optionally create) each attribute value -> value id."""
+        ids: list[int] = []
+        for pair in pairs:
+            group_id = await self._resolve_attribute_group(
+                pair.group_name, pair.group_type, pair.group_position)
+            if group_id is None:
+                continue
+            value_id = await self._resolve_attribute_value(
+                group_id, pair.value_name, pair.value_position,
+                is_color=pair.group_type == "color")
+            if value_id is not None:
+                ids.append(value_id)
+        return ids
+
+    async def _resolve_attribute_group(self, name: str, group_type: str,
+                                       position: str) -> int | None:
+        if name in self._group_cache:
+            return self._group_cache[name]
+        gid = await self._find_id("product_options", {"name": name})
+        if gid is None and self.create_missing:
+            schema = await self._schema("product_options")
+            values = {
+                "name": name,
+                "public_name": name,
+                "group_type": group_type or "select",
+                "is_color_group": "1" if group_type == "color" else "0",
+                "position": position or "0",
+            }
+            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+            result = await self.client.create("product_options", xml)
+            gid = result.get("id")
+        self._group_cache[name] = gid
+        return gid
+
+    async def _resolve_attribute_value(self, group_id: int, value: str,
+                                       position: str, is_color: bool = False) -> int | None:
+        cache_key = (group_id, value)
+        if cache_key in self._value_cache:
+            return self._value_cache[cache_key]
+        vid = await self._find_id(
+            "product_option_values",
+            {"id_attribute_group": group_id, "name": value})
+        if vid is None and self.create_missing:
+            schema = await self._schema("product_option_values")
+            values = {
+                "id_attribute_group": str(group_id),
+                "name": value,
+                "position": position or "0",
+            }
+            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+            result = await self.client.create("product_option_values", xml)
+            vid = result.get("id")
+        self._value_cache[cache_key] = vid
+        return vid
+
+    async def find_product_id(self, reference: str) -> int | None:
+        return await self._find_id("products", {"reference": reference})
 
     # ------------------------------- images --------------------------- #
     async def fetch_image(self, url: str) -> tuple[bytes, str, str]:

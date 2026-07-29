@@ -136,6 +136,14 @@ def _set_associations(resource_el: ET.Element, associations: dict[str, object]) 
             ET.SubElement(pf, "id").text = str(feat_id)
             ET.SubElement(pf, "id_feature_value").text = str(value_id)
 
+    # Combination -> attribute value links.
+    option_values = associations.get("product_option_values") or []
+    if option_values:
+        povs = ET.SubElement(assoc_el, "product_option_values")
+        for vid in option_values:
+            pov = ET.SubElement(povs, "product_option_value")
+            ET.SubElement(pov, "id").text = str(vid)
+
     # If nothing was added, drop the empty element again.
     if len(assoc_el) == 0:
         resource_el.remove(assoc_el)

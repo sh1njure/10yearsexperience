@@ -11,32 +11,47 @@ from ..config import get_settings
 router = APIRouter(prefix="/api/mapping", tags=["mapping"])
 
 
+# Canonical mapping targets for a combinations import (pseudo-fields the
+# combination importer understands; not raw schema fields).
+COMBINATION_TARGETS = [
+    "product_reference", "attributes", "values", "reference",
+    "supplier_reference", "ean13", "price_impact", "quantity",
+    "minimal_quantity", "default", "images",
+]
+
+
 @router.post("/{token}/automatch")
-async def automatch(token: str, resource: str = "products") -> dict:
-    """Auto-match the uploaded headers against a live PrestaShop schema."""
+async def automatch(token: str, resource: str = "products",
+                    import_type: str = "products") -> dict:
+    """Auto-match the uploaded headers against the target field list.
+
+    For products this is the live product schema (plus synthetic association
+    targets); for combinations it is the combination pseudo-field list.
+    """
     session = state.get_session(token)
     if session is None or not session.headers:
         raise HTTPException(404, "Parse the uploaded file first.")
 
-    s = get_settings()
-    async with PrestaShopClient(s.normalized_url, s.prestashop_api_key,
-                                default_lang_id=s.default_lang_id) as client:
-        try:
-            schema = await client.fetch_schema(resource)
-        except PrestaShopError as exc:
-            raise HTTPException(502, f"Could not fetch schema: {exc}") from exc
-
-    # Augment the live product fields with synthetic association targets so the
-    # user can map Categories / Tags / Images / Features columns too. The
-    # importer resolves these names to IDs at import time.
-    field_names = schema.field_names()
-    if resource == "products":
+    if import_type == "combinations":
+        field_names = list(COMBINATION_TARGETS)
+    else:
+        s = get_settings()
+        async with PrestaShopClient(s.normalized_url, s.prestashop_api_key,
+                                    default_lang_id=s.default_lang_id) as client:
+            try:
+                schema = await client.fetch_schema(resource)
+            except PrestaShopError as exc:
+                raise HTTPException(502, f"Could not fetch schema: {exc}") from exc
+        # Augment product fields with synthetic association targets.
+        field_names = schema.field_names()
         for special in ("categories", "tags", "images", "features"):
             if special not in field_names:
                 field_names = field_names + [special]
+
     matches = mapper.match_headers(session.headers, field_names)
     return {
         "resource": resource,
+        "import_type": import_type,
         "ps_fields": field_names,
         "matches": [
             {"header": m.header, "field": m.field, "confidence": m.confidence,

@@ -83,3 +83,31 @@ def test_price_includes_tax_conversion(tmp_path):
 
     price = float(asyncio.run(run()))
     assert abs(price - 20.5 / 1.23) < 0.001
+
+
+def test_parse_attribute_pairs():
+    pairs = resolver.parse_attribute_pairs(
+        "Colour:color:0, Configuration:select:1", "Black:0, Lantern head only:0")
+    assert len(pairs) == 2
+    assert pairs[0].group_name == "Colour" and pairs[0].group_type == "color"
+    assert pairs[0].value_name == "Black"
+    assert pairs[1].group_name == "Configuration" and pairs[1].group_type == "select"
+    assert pairs[1].value_name == "Lantern head only"
+
+
+def test_parse_attribute_pairs_value_with_colon():
+    pairs = resolver.parse_attribute_pairs("Size:select:0", "10:20 cm:3")
+    assert pairs[0].value_name == "10:20 cm"
+    assert pairs[0].value_position == "3"
+
+
+def test_combination_associations_xml():
+    blank = ("<?xml version='1.0'?><prestashop><combination><id_product/><reference/>"
+             "<associations><product_option_values><product_option_value><id/>"
+             "</product_option_value></product_option_values></associations>"
+             "</combination></prestashop>")
+    xml = xml_builder.build_create_xml(
+        blank, {"id_product": "55", "reference": "X-BK"},
+        associations={"product_option_values": [10, 20]})
+    assert "<product_option_value><id>10</id></product_option_value>" in xml
+    assert "<product_option_value><id>20</id></product_option_value>" in xml
