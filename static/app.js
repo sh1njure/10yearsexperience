@@ -18,17 +18,7 @@ const api = async (path, opts = {}) => {
 
 // -------------------------------- tabs -------------------------------- //
 function activateTab(name) {
-  $$(".tab").forEach((t) =>
-    t.classList.toggle("border-b-2", t.dataset.tab === name) ||
-    t.classList.toggle("border-slate-900", t.dataset.tab === name) ||
-    t.classList.toggle("text-slate-900", t.dataset.tab === name));
-  $$(".tab").forEach((t) => {
-    const active = t.dataset.tab === name;
-    t.classList.toggle("border-b-2", active);
-    t.classList.toggle("border-slate-900", active);
-    t.classList.toggle("text-slate-900", active);
-    t.classList.toggle("text-slate-500", !active);
-  });
+  $$(".tab").forEach((t) => t.classList.toggle("tab-active", t.dataset.tab === name));
   $$(".panel").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
   if (name === "history") loadHistory();
   if (name === "mapping") loadProfileList();
@@ -36,7 +26,23 @@ function activateTab(name) {
 $$(".tab").forEach((t) => t.addEventListener("click", () => activateTab(t.dataset.tab)));
 
 // State shared across tabs.
-const S = { token: null, headers: [], psFields: [], matches: [] };
+const S = { token: null, headers: [], psFields: [], matches: [], importType: "products" };
+
+// -------------------------- import mode ------------------------------- //
+function setMode(mode) {
+  S.importType = mode === "combinations" ? "combinations" : "products";
+  const badge = $("#modeBadge");
+  badge.textContent = "Mode: " + (S.importType === "combinations" ? "Combinations" : "Products");
+  badge.classList.remove("hidden");
+  // Sensible default scope per mode.
+  const on = S.importType === "combinations" ? ["combinations", "stock"] : ["products"];
+  $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
+  // Tax conversion only applies to product prices.
+  $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");
+  $("#modeOverlay").classList.add("hidden");
+}
+$$("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
+$("#btnChangeMode").addEventListener("click", () => $("#modeOverlay").classList.remove("hidden"));
 
 // ------------------------------ settings ------------------------------ //
 async function loadSettings() {
@@ -146,8 +152,7 @@ $("#btnAutomatch").addEventListener("click", async () => {
   if (!S.token || !S.headers.length) { $("#mapWrap").textContent = "Upload & parse a file first."; return; }
   $("#mapWrap").textContent = "Matching…";
   try {
-    const it = $("#importType").value;
-    const data = await api(`/api/mapping/${S.token}/automatch?import_type=${it}`, { method: "POST", body: "{}" });
+    const data = await api(`/api/mapping/${S.token}/automatch?import_type=${S.importType}`, { method: "POST", body: "{}" });
     S.psFields = data.ps_fields;
     S.matches = data.matches;
     renderMatches();
@@ -262,7 +267,7 @@ $("#btnRun").addEventListener("click", () => {
     create_missing: $("#createMissing").checked,
     price_includes_tax: $("#priceInclTax").checked,
     tax_rate: parseFloat($("#taxRate").value) || 0,
-    import_type: $("#importType").value,
+    import_type: S.importType,
   };
   runImport(payload);
 });

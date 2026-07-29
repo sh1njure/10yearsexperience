@@ -5,12 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>PrestaShop Supplier Importer</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --accent:#4f46e5; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .app-bg { background:
+        radial-gradient(1200px 400px at 100% -10%, rgba(79,70,229,.08), transparent),
+        radial-gradient(900px 400px at -10% 0%, rgba(14,165,233,.07), transparent),
+        #f8fafc; }
+    .tab { position:relative; color:#64748b; border-bottom:2px solid transparent; transition:color .15s, border-color .15s; }
+    .tab:hover { color:#334155; }
+    .tab.tab-active { color:#4f46e5; border-color:#4f46e5; }
+    .card { background:#fff; border:1px solid #e7eaf0; border-radius:14px; box-shadow:0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.03); }
+    .btn-primary { background:var(--accent); color:#fff; }
+    .btn-primary:hover { background:#4338ca; }
+    .btn-ghost { background:#fff; border:1px solid #d7dbe3; color:#334155; }
+    .btn-ghost:hover { background:#f8fafc; }
+    .field { border:1px solid #d7dbe3; border-radius:8px; }
+    .field:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+    .mode-card { transition:border-color .15s, box-shadow .15s, transform .05s; }
+    .mode-card:hover { border-color:var(--accent); box-shadow:0 6px 20px rgba(79,70,229,.12); }
+    .mode-card:active { transform:translateY(1px); }
+  </style>
 </head>
-<body class="h-full bg-slate-50 text-slate-800">
+<body class="h-full app-bg text-slate-800">
+
+  <!-- ── Start screen: choose import type ─────────────────────────── -->
+  <div id="modeOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+    <div class="card w-full max-w-xl p-8">
+      <h2 class="text-xl font-bold text-slate-900">What are you importing?</h2>
+      <p class="text-sm text-slate-500 mt-1">Pick how this session should work. The steps below adapt to your choice — you can switch anytime.</p>
+      <div class="grid sm:grid-cols-2 gap-4 mt-6">
+        <button data-mode="products" class="mode-card text-left border border-slate-200 rounded-xl p-5">
+          <span class="block text-base font-semibold text-slate-900">Products</span>
+          <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Main product records — name, price, categories, brand, images and features.</span>
+        </button>
+        <button data-mode="combinations" class="mode-card text-left border border-slate-200 rounded-xl p-5">
+          <span class="block text-base font-semibold text-slate-900">Combinations</span>
+          <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Variants of existing products — attributes, references, price impact and stock.</span>
+        </button>
+      </div>
+      <p class="text-xs text-slate-400 mt-5">Tip: import products first, then their combinations.</p>
+    </div>
+  </div>
+
   <div class="max-w-5xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">PrestaShop Supplier Importer</h1>
-      <p class="text-sm text-slate-500">Local tool — imports supplier spreadsheets into PrestaShop via the Webservice API.</p>
+    <header class="mb-6 flex items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 tracking-tight">PrestaShop Supplier Importer</h1>
+        <p class="text-sm text-slate-500">Local tool — imports supplier spreadsheets into PrestaShop via the Webservice API.</p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span id="modeBadge" class="hidden text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100"></span>
+        <button id="btnChangeMode" class="text-xs btn-ghost px-2.5 py-1 rounded-md">Change</button>
+      </div>
     </header>
 
     <nav class="flex gap-1 border-b border-slate-200 mb-6" id="tabs">
@@ -23,26 +70,26 @@
 
     <!-- SETTINGS -->
     <section data-panel="settings" class="panel space-y-4">
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+      <div class="card p-6 space-y-4">
         <h2 class="font-semibold text-slate-900">Connection</h2>
         <label class="block text-sm">
           <span class="text-slate-600">Shop base URL</span>
           <input id="shopUrl" type="url" placeholder="https://shop.example.com"
-                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+                 class="mt-1 w-full field px-3 py-2 text-sm" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-600">Webservice API key</span>
           <input id="apiKey" type="password" placeholder="Webservice key"
-                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+                 class="mt-1 w-full field px-3 py-2 text-sm" />
         </label>
         <label class="block text-sm w-40">
           <span class="text-slate-600">Default language id</span>
           <input id="langId" type="number" value="1" min="1"
-                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+                 class="mt-1 w-full field px-3 py-2 text-sm" />
         </label>
         <div class="flex gap-2">
-          <button id="btnTest" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Test connection</button>
-          <button id="btnSave" class="bg-white border border-slate-300 text-sm px-4 py-2 rounded hover:bg-slate-50">Save</button>
+          <button id="btnTest" class="btn-primary text-sm px-4 py-2 rounded-lg">Test connection</button>
+          <button id="btnSave" class="btn-ghost text-sm px-4 py-2 rounded-lg">Save</button>
         </div>
         <div id="testResult" class="text-sm"></div>
       </div>
@@ -50,20 +97,20 @@
 
     <!-- UPLOAD -->
     <section data-panel="upload" class="panel hidden space-y-4">
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+      <div class="card p-6 space-y-4">
         <h2 class="font-semibold text-slate-900">Upload spreadsheet</h2>
         <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="text-sm" />
         <div id="uploadInfo" class="text-sm text-slate-600"></div>
         <div class="flex gap-3 items-end flex-wrap">
           <label class="text-sm">
             <span class="text-slate-600 block">Sheet</span>
-            <select id="sheetSelect" class="mt-1 rounded border border-slate-300 px-3 py-2 text-sm"></select>
+            <select id="sheetSelect" class="mt-1 field px-3 py-2 text-sm"></select>
           </label>
           <label class="text-sm">
             <span class="text-slate-600 block">Header row (1-based)</span>
-            <input id="headerRow" type="number" value="1" min="1" class="mt-1 w-24 rounded border border-slate-300 px-3 py-2 text-sm" />
+            <input id="headerRow" type="number" value="1" min="1" class="mt-1 w-24 field px-3 py-2 text-sm" />
           </label>
-          <button id="btnParse" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Use this header</button>
+          <button id="btnParse" class="btn-primary text-sm px-4 py-2 rounded-lg">Use this header</button>
         </div>
         <div id="previewWrap" class="overflow-x-auto"></div>
       </div>
@@ -71,34 +118,26 @@
 
     <!-- MAPPING -->
     <section data-panel="mapping" class="panel hidden space-y-4">
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
-        <div class="flex items-center justify-between">
+      <div class="card p-6 space-y-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
           <h2 class="font-semibold text-slate-900">Field mapping</h2>
-          <div class="flex items-center gap-2">
-            <label class="text-sm text-slate-600">Import type
-              <select id="importType" class="ml-1 rounded border border-slate-300 px-2 py-1 text-sm">
-                <option value="products">Products</option>
-                <option value="combinations">Combinations (variants)</option>
-              </select>
-            </label>
-            <button id="btnAutomatch" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Auto-match</button>
-          </div>
+          <button id="btnAutomatch" class="btn-primary text-sm px-4 py-2 rounded-lg">Auto-match</button>
         </div>
         <div id="mapWrap" class="overflow-x-auto text-sm text-slate-500">Upload &amp; parse a file, then auto-match.</div>
         <div class="flex gap-2 items-end flex-wrap border-t border-slate-100 pt-4">
-          <input id="profileName" placeholder="Profile name" class="rounded border border-slate-300 px-3 py-2 text-sm" />
-          <button id="btnSaveProfile" class="bg-white border border-slate-300 text-sm px-3 py-2 rounded">Save profile</button>
-          <select id="profileSelect" class="rounded border border-slate-300 px-3 py-2 text-sm"></select>
-          <button id="btnLoadProfile" class="bg-white border border-slate-300 text-sm px-3 py-2 rounded">Load</button>
+          <input id="profileName" placeholder="Profile name" class="field px-3 py-2 text-sm" />
+          <button id="btnSaveProfile" class="btn-ghost text-sm px-3 py-2 rounded-lg">Save profile</button>
+          <select id="profileSelect" class="field px-3 py-2 text-sm"></select>
+          <button id="btnLoadProfile" class="btn-ghost text-sm px-3 py-2 rounded-lg">Load</button>
         </div>
       </div>
     </section>
 
     <!-- IMPORT -->
     <section data-panel="import" class="panel hidden space-y-4">
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+      <div class="card p-6 space-y-4">
         <h2 class="font-semibold text-slate-900">Import</h2>
-        <div class="flex gap-4 flex-wrap text-sm">
+        <div id="scopeRow" class="flex gap-4 flex-wrap text-sm">
           <label><input type="checkbox" class="scope" value="products" checked> Products</label>
           <label><input type="checkbox" class="scope" value="prices"> Prices</label>
           <label><input type="checkbox" class="scope" value="stock"> Stock</label>
@@ -108,37 +147,37 @@
         </div>
         <div class="flex gap-4 items-end flex-wrap text-sm">
           <label>Mode
-            <select id="mode" class="ml-1 rounded border border-slate-300 px-2 py-1">
+            <select id="mode" class="ml-1 field px-2 py-1">
               <option value="create_only">Create only</option>
               <option value="update_only">Update only</option>
               <option value="upsert" selected>Upsert (match by reference)</option>
             </select>
           </label>
           <label>Concurrency
-            <input id="concurrency" type="number" value="2" min="1" max="5" class="ml-1 w-16 rounded border border-slate-300 px-2 py-1">
+            <input id="concurrency" type="number" value="2" min="1" max="5" class="ml-1 w-16 field px-2 py-1">
           </label>
           <label class="font-medium text-amber-700">
             <input id="dryRun" type="checkbox" checked> Dry run (default — nothing is sent)
           </label>
-          <label title="Create categories, brands, tags and features that don't exist yet">
-            <input id="createMissing" type="checkbox"> Create missing categories/brands/tags/features
+          <label title="Create categories, brands, tags, features and attributes that don't exist yet">
+            <input id="createMissing" type="checkbox"> Create missing records
           </label>
         </div>
-        <div class="flex gap-4 items-end flex-wrap text-sm">
+        <div id="priceTaxRow" class="flex gap-4 items-end flex-wrap text-sm">
           <label title="If your price column includes tax, the API needs the tax-excluded value">
             <input id="priceInclTax" type="checkbox"> Price includes tax — convert to tax-excluded
           </label>
           <label>Tax rate %
-            <input id="taxRate" type="number" value="0" min="0" step="0.1" class="ml-1 w-20 rounded border border-slate-300 px-2 py-1">
+            <input id="taxRate" type="number" value="0" min="0" step="0.1" class="ml-1 w-20 field px-2 py-1">
           </label>
         </div>
         <div class="flex gap-2">
-          <button id="btnValidate" class="bg-white border border-slate-300 text-sm px-4 py-2 rounded">Validate</button>
-          <button id="btnRun" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Run</button>
+          <button id="btnValidate" class="btn-ghost text-sm px-4 py-2 rounded-lg">Validate</button>
+          <button id="btnRun" class="btn-primary text-sm px-4 py-2 rounded-lg">Run</button>
         </div>
         <div id="validateWrap" class="overflow-x-auto text-sm"></div>
         <div id="progressWrap" class="hidden">
-          <div class="w-full bg-slate-200 rounded h-3"><div id="bar" class="bg-green-500 h-3 rounded" style="width:0%"></div></div>
+          <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden"><div id="bar" class="bg-indigo-500 h-2.5 rounded-full transition-all" style="width:0%"></div></div>
           <div id="progressText" class="text-xs text-slate-500 mt-1"></div>
         </div>
         <div id="resultWrap" class="overflow-x-auto text-sm"></div>
@@ -147,7 +186,7 @@
 
     <!-- HISTORY -->
     <section data-panel="history" class="panel hidden space-y-4">
-      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+      <div class="card p-6">
         <h2 class="font-semibold text-slate-900 mb-3">Import history</h2>
         <div id="historyWrap" class="overflow-x-auto text-sm text-slate-500">No runs yet.</div>
       </div>
