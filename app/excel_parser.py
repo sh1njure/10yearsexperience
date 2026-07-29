@@ -46,7 +46,7 @@ def preview(path: str | Path, sheet: str | None = None,
     """
     path = Path(path)
     if path.suffix.lower() == ".csv":
-        df = pd.read_csv(path, header=None, dtype=str, keep_default_na=False)
+        df = _read_csv(path, header=None)
         sheet_name = "CSV"
     else:
         sheet_name = sheet or list_sheets(path)[0]
@@ -69,7 +69,7 @@ def parse(path: str | Path, sheet: str | None = None,
     """
     path = Path(path)
     if path.suffix.lower() == ".csv":
-        df = pd.read_csv(path, header=header_row, dtype=str, keep_default_na=False)
+        df = _read_csv(path, header=header_row)
         sheet_name = "CSV"
     else:
         sheet_name = sheet or list_sheets(path)[0]
@@ -85,6 +85,41 @@ def parse(path: str | Path, sheet: str | None = None,
     ]
     return ParsedTable(headers=headers, rows=rows, sheet=sheet_name,
                        header_row=header_row)
+
+
+def _read_csv(path: Path, header) -> pd.DataFrame:
+    """Read a CSV robustly, auto-detecting delimiter and encoding.
+
+    Supplier exports are frequently semicolon- or tab-delimited and encoded as
+    Windows-1252/Latin-1 rather than UTF-8. We try the likely combinations and
+    fall back to Latin-1 (which decodes any byte) so a preview is always
+    possible instead of failing silently.
+    """
+    encodings = ["utf-8-sig", "utf-8", "cp1252", "latin-1"]
+    separators = [None, ",", ";", "\t", "|"]  # None => sniff via python engine
+    last_err: Exception | None = None
+    for enc in encodings:
+        for sep in separators:
+            try:
+                df = pd.read_csv(
+                    path, header=header, dtype=str, keep_default_na=False,
+                    sep=sep, engine="python", encoding=enc,
+                    on_bad_lines="skip", skip_blank_lines=False,
+                )
+                # A delimiter mis-detection collapses everything into 1 column;
+                # keep looking for a separator that actually splits the data.
+                if df.shape[1] > 1 or sep is not None:
+                    return df
+            except Exception as exc:  # try the next combo
+                last_err = exc
+    # Last resort: latin-1 + comma always decodes, even as a single column.
+    try:
+        return pd.read_csv(path, header=header, dtype=str,
+                           keep_default_na=False, encoding="latin-1",
+                           engine="python", on_bad_lines="skip",
+                           skip_blank_lines=False)
+    except Exception as exc:
+        raise ValueError(f"Could not read CSV file: {exc}") from (last_err or exc)
 
 
 def _clean(value: object) -> str:

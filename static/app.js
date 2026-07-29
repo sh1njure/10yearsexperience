@@ -102,8 +102,21 @@ $("#sheetSelect").addEventListener("change", loadPreview);
 
 async function loadPreview() {
   if (!S.token) return;
-  const sheet = encodeURIComponent($("#sheetSelect").value);
-  const data = await api(`/api/upload/${S.token}/preview?sheet=${sheet}`);
+  $("#previewWrap").innerHTML = `<p class="text-sm text-slate-500">Loading preview…</p>`;
+  let data;
+  try {
+    const sheet = encodeURIComponent($("#sheetSelect").value);
+    data = await api(`/api/upload/${S.token}/preview?sheet=${sheet}`);
+  } catch (e) {
+    $("#previewWrap").innerHTML =
+      `<p class="text-sm text-red-600">Could not preview this file: ${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  if (!data.rows || !data.rows.length) {
+    $("#previewWrap").innerHTML =
+      `<p class="text-sm text-amber-600">The file was read but appears to have no rows.</p>`;
+    return;
+  }
   const rows = data.rows.map((r, i) =>
     `<tr class="${i === 0 ? "bg-amber-50 font-medium" : ""}">
        <td class="px-2 py-1 text-slate-400">${i + 1}</td>
