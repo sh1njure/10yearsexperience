@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <product>
+    <id readOnly="true"/>
+    <id_manufacturer/>
+    <id_category_default/>
+    <id_tax_rules_group/>
+    <reference/>
+    <ean13/>
+    <price/>
+    <wholesale_price/>
+    <active/>
+    <weight/>
+    <manufacturer_name readOnly="true"/>
+    <quantity readOnly="true"/>
+    <name>
+      <language id="1"/>
+      <language id="2"/>
+    </name>
+    <description>
+      <language id="1"/>
+      <language id="2"/>
+    </description>
+    <link_rewrite>
+      <language id="1"/>
+      <language id="2"/>
+    </link_rewrite>
+  </product>
+</prestashop>

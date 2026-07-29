@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <api shopName="Test Shop">
+    <products xlink:href="http://shop/api/products" get="true" put="true" post="true"/>
+    <categories xlink:href="http://shop/api/categories" get="true" put="true"/>
+    <stock_availables xlink:href="http://shop/api/stock_availables" get="true"/>
+    <manufacturers xlink:href="http://shop/api/manufacturers" get="true"/>
+    <combinations xlink:href="http://shop/api/combinations" get="true"/>
+  </api>
+</prestashop>

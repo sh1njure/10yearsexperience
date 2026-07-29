@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PrestaShop Supplier Importer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full bg-slate-50 text-slate-800">
+  <div class="max-w-5xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold text-slate-900">PrestaShop Supplier Importer</h1>
+      <p class="text-sm text-slate-500">Local tool — imports supplier spreadsheets into PrestaShop via the Webservice API.</p>
+    </header>
+
+    <nav class="flex gap-1 border-b border-slate-200 mb-6" id="tabs">
+      <button data-tab="settings" class="tab px-4 py-2 text-sm font-medium">Settings</button>
+      <button data-tab="upload"   class="tab px-4 py-2 text-sm font-medium">Upload</button>
+      <button data-tab="mapping"  class="tab px-4 py-2 text-sm font-medium">Mapping</button>
+      <button data-tab="import"   class="tab px-4 py-2 text-sm font-medium">Import</button>
+      <button data-tab="history"  class="tab px-4 py-2 text-sm font-medium">History</button>
+    </nav>
+
+    <!-- SETTINGS -->
+    <section data-panel="settings" class="panel space-y-4">
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+        <h2 class="font-semibold text-slate-900">Connection</h2>
+        <label class="block text-sm">
+          <span class="text-slate-600">Shop base URL</span>
+          <input id="shopUrl" type="url" placeholder="https://shop.example.com"
+                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-600">Webservice API key</span>
+          <input id="apiKey" type="password" placeholder="Webservice key"
+                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <label class="block text-sm w-40">
+          <span class="text-slate-600">Default language id</span>
+          <input id="langId" type="number" value="1" min="1"
+                 class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+        </label>
+        <div class="flex gap-2">
+          <button id="btnTest" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Test connection</button>
+          <button id="btnSave" class="bg-white border border-slate-300 text-sm px-4 py-2 rounded hover:bg-slate-50">Save</button>
+        </div>
+        <div id="testResult" class="text-sm"></div>
+      </div>
+    </section>
+
+    <!-- UPLOAD -->
+    <section data-panel="upload" class="panel hidden space-y-4">
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+        <h2 class="font-semibold text-slate-900">Upload spreadsheet</h2>
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="text-sm" />
+        <div id="uploadInfo" class="text-sm text-slate-600"></div>
+        <div class="flex gap-3 items-end flex-wrap">
+          <label class="text-sm">
+            <span class="text-slate-600 block">Sheet</span>
+            <select id="sheetSelect" class="mt-1 rounded border border-slate-300 px-3 py-2 text-sm"></select>
+          </label>
+          <label class="text-sm">
+            <span class="text-slate-600 block">Header row (1-based)</span>
+            <input id="headerRow" type="number" value="1" min="1" class="mt-1 w-24 rounded border border-slate-300 px-3 py-2 text-sm" />
+          </label>
+          <button id="btnParse" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Use this header</button>
+        </div>
+        <div id="previewWrap" class="overflow-x-auto"></div>
+      </div>
+    </section>
+
+    <!-- MAPPING -->
+    <section data-panel="mapping" class="panel hidden space-y-4">
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-slate-900">Field mapping</h2>
+          <button id="btnAutomatch" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Auto-match</button>
+        </div>
+        <div id="mapWrap" class="overflow-x-auto text-sm text-slate-500">Upload &amp; parse a file, then auto-match.</div>
+        <div class="flex gap-2 items-end flex-wrap border-t border-slate-100 pt-4">
+          <input id="profileName" placeholder="Profile name" class="rounded border border-slate-300 px-3 py-2 text-sm" />
+          <button id="btnSaveProfile" class="bg-white border border-slate-300 text-sm px-3 py-2 rounded">Save profile</button>
+          <select id="profileSelect" class="rounded border border-slate-300 px-3 py-2 text-sm"></select>
+          <button id="btnLoadProfile" class="bg-white border border-slate-300 text-sm px-3 py-2 rounded">Load</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMPORT -->
+    <section data-panel="import" class="panel hidden space-y-4">
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5 space-y-4">
+        <h2 class="font-semibold text-slate-900">Import</h2>
+        <div class="flex gap-4 flex-wrap text-sm">
+          <label><input type="checkbox" class="scope" value="products" checked> Products</label>
+          <label><input type="checkbox" class="scope" value="prices"> Prices</label>
+          <label><input type="checkbox" class="scope" value="stock"> Stock</label>
+          <label><input type="checkbox" class="scope" value="categories"> Categories</label>
+          <label><input type="checkbox" class="scope" value="images"> Images</label>
+          <label><input type="checkbox" class="scope" value="combinations"> Combinations</label>
+        </div>
+        <div class="flex gap-4 items-end flex-wrap text-sm">
+          <label>Mode
+            <select id="mode" class="ml-1 rounded border border-slate-300 px-2 py-1">
+              <option value="create_only">Create only</option>
+              <option value="update_only">Update only</option>
+              <option value="upsert" selected>Upsert (match by reference)</option>
+            </select>
+          </label>
+          <label>Concurrency
+            <input id="concurrency" type="number" value="2" min="1" max="5" class="ml-1 w-16 rounded border border-slate-300 px-2 py-1">
+          </label>
+          <label class="font-medium text-amber-700">
+            <input id="dryRun" type="checkbox" checked> Dry run (default — nothing is sent)
+          </label>
+        </div>
+        <div class="flex gap-2">
+          <button id="btnValidate" class="bg-white border border-slate-300 text-sm px-4 py-2 rounded">Validate</button>
+          <button id="btnRun" class="bg-slate-900 text-white text-sm px-4 py-2 rounded hover:bg-slate-700">Run</button>
+        </div>
+        <div id="validateWrap" class="overflow-x-auto text-sm"></div>
+        <div id="progressWrap" class="hidden">
+          <div class="w-full bg-slate-200 rounded h-3"><div id="bar" class="bg-green-500 h-3 rounded" style="width:0%"></div></div>
+          <div id="progressText" class="text-xs text-slate-500 mt-1"></div>
+        </div>
+        <div id="resultWrap" class="overflow-x-auto text-sm"></div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section data-panel="history" class="panel hidden space-y-4">
+      <div class="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+        <h2 class="font-semibold text-slate-900 mb-3">Import history</h2>
+        <div id="historyWrap" class="overflow-x-auto text-sm text-slate-500">No runs yet.</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
