@@ -259,6 +259,8 @@ $("#btnRun").addEventListener("click", () => {
     concurrency: parseInt($("#concurrency").value, 10) || 2,
     scope,
     create_missing: $("#createMissing").checked,
+    price_includes_tax: $("#priceInclTax").checked,
+    tax_rate: parseFloat($("#taxRate").value) || 0,
   };
   runImport(payload);
 });

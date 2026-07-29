@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from decimal import Decimal
 from enum import Enum
 from typing import Awaitable, Callable
 
 from .api_client import PrestaShopClient, PrestaShopError
 from .resolver import Resolver, parse_features, split_list
+from .validator import parse_number
 from . import xml_builder
 
 
@@ -56,6 +58,10 @@ class ImportConfig:
     scope: set[str] = field(default_factory=lambda: {"products"})
     # Create categories/brands/tags/features that don't exist yet.
     create_missing: bool = False
+    # If the mapped price includes tax, divide by (1 + tax_rate/100) so the
+    # tax-excluded value the API expects gets stored.
+    price_includes_tax: bool = False
+    tax_rate: float = 0.0
 
 
 ProgressCb = Callable[[RowResult], Awaitable[None]] | None
@@ -128,6 +134,14 @@ class Importer:
         # validation. If it isn't mapped, derive it from the name.
         if not str(simple.get("link_rewrite", "")).strip() and simple.get("name"):
             simple["link_rewrite"] = xml_builder.slugify(str(simple["name"]))
+
+        # Convert a tax-included price to the tax-excluded value the API stores.
+        if (self.config.price_includes_tax and self.config.tax_rate > 0
+                and simple.get("price")):
+            num = parse_number(str(simple["price"]))
+            if num is not None:
+                divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
+                simple["price"] = f"{(num / divisor):.6f}"
 
         associations: dict[str, object] = {}
         image_urls: list[str] = []

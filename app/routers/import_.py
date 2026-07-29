@@ -63,6 +63,8 @@ class RunIn(BaseModel):
     concurrency: int = 2
     scope: list[str] = ["products"]
     create_missing: bool = False
+    price_includes_tax: bool = False
+    tax_rate: float = 0.0
     profile_name: str | None = None
 
 
@@ -89,6 +91,8 @@ async def run(token: str, payload: RunIn):
         lang_id=s.default_lang_id,
         scope=set(payload.scope),
         create_missing=payload.create_missing,
+        price_includes_tax=payload.price_includes_tax,
+        tax_rate=payload.tax_rate,
     )
     run_id = db.create_run(payload.mode, payload.dry_run, len(rows),
                            payload.profile_name)

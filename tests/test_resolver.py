@@ -54,3 +54,32 @@ def test_associations_categories_and_features():
 def test_associations_absent_when_empty():
     xml = xml_builder.build_create_xml(BLANK, {"reference": "X1"}, associations={})
     assert "<associations" not in xml or "<category><id>" not in xml
+
+
+def test_price_includes_tax_conversion(tmp_path):
+    """20.5 incl 23% tax -> ~16.67 stored (tax-excluded)."""
+    import asyncio, httpx
+    from app.api_client import PrestaShopClient
+    from app.importer import Importer, ImportConfig, Mode
+    import re
+
+    blank = ("<?xml version='1.0'?><prestashop><product><reference/><price/>"
+             "<name><language id=\"1\"/></name>"
+             "<link_rewrite><language id=\"1\"/></link_rewrite></product></prestashop>")
+
+    def handler(req):
+        if req.url.path.endswith("/api/products") and dict(req.url.params).get("schema") == "blank":
+            return httpx.Response(200, text=blank)
+        return httpx.Response(200, json={})
+
+    async def run():
+        c = PrestaShopClient("http://s", "K")
+        c._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        imp = Importer(c, ImportConfig(dry_run=True, mode=Mode.CREATE_ONLY,
+                                       price_includes_tax=True, tax_rate=23))
+        r = (await imp.run([{"reference": "X", "name": "Anna", "price": "20.5"}]))[0]
+        await c.aclose()
+        return re.search(r"<price>([^<]+)</price>", r.payload).group(1)
+
+    price = float(asyncio.run(run()))
+    assert abs(price - 20.5 / 1.23) < 0.001
