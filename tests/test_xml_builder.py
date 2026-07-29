@@ -97,8 +97,8 @@ def test_build_update_preserves_unmapped_fields():
     assert _find(root, "price").text == "3.50"
     # unmapped field preserved
     assert _find(root, "weight").text == "2.5"
-    # read-only id stripped
-    assert _find(root, "id") is None
+    # id must be PRESERVED on PUT (PrestaShop requires it to modify a resource)
+    assert _find(root, "id").text == "42"
 
 
 # ------------------------------ slugify ------------------------------- #
@@ -110,3 +110,18 @@ def test_build_update_preserves_unmapped_fields():
 ])
 def test_slugify(raw, expected):
     assert xml_builder.slugify(raw) == expected
+
+
+def test_build_update_stock_available_keeps_id_and_quantity():
+    """stock_availables PUT must keep <id> and be able to set quantity
+    (quantity is read-only on products but writable here)."""
+    existing = ("<?xml version='1.0'?><prestashop><stock_available>"
+                "<id>124</id><id_product>55</id_product>"
+                "<id_product_attribute>3</id_product_attribute>"
+                "<id_shop>1</id_shop><quantity>0</quantity>"
+                "</stock_available></prestashop>")
+    xml = xml_builder.build_update_xml(existing, {"quantity": "10"})
+    root = ET.fromstring(xml)
+    assert _find(root, "id").text == "124"
+    assert _find(root, "quantity").text == "10"
+    assert _find(root, "id_product").text == "55"

@@ -121,7 +121,10 @@ class CombinationImporter:
                 action = "created"
 
             if combo_id and "stock" in self.config.scope:
-                await self._set_stock(product_id, combo_id, row.get("quantity"))
+                try:
+                    await self._set_stock(product_id, combo_id, row.get("quantity"))
+                except Exception as exc:  # combination itself already succeeded
+                    notes.append(f"stock not set ({exc})")
 
             extra = f" ({len(value_ids)} attribute(s))"
             if notes:

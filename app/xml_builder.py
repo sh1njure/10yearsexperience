@@ -165,15 +165,24 @@ def build_update_xml(existing_resource_xml: str, values: dict[str, object], *,
 
     multilingual = multilingual_fields or _detect_multilingual(resource_el)
     # For updates we only overwrite provided values; keep the rest as-is, but
-    # still strip read-only fields the API rejects.
+    # still strip read-only fields the API rejects. The <id> element is the one
+    # read-only field that MUST stay — PrestaShop rejects a PUT without it
+    # ("id is required when modifying a resource").
     for el in list(resource_el):
         name = _localname(el.tag)
-        if name in READ_ONLY_FIELDS or el.attrib.get("readOnly") == "true":
+        provided = name in values and values[name] not in (None, "")
+        # Strip read-only fields the API rejects — EXCEPT <id> (required on PUT)
+        # and any field the caller explicitly set (e.g. quantity on
+        # stock_availables, where it is writable even though it is read-only on
+        # products).
+        if (not provided and name != "id"
+                and (name in READ_ONLY_FIELDS
+                     or el.attrib.get("readOnly") == "true")):
             resource_el.remove(el)
             continue
         for attr in ("readOnly", "required", "maxSize", "format"):
             el.attrib.pop(attr, None)
-        if name in values and values[name] not in (None, ""):
+        if provided:
             if name in multilingual:
                 _set_multilingual(el, str(values[name]), lang_id)
             else:

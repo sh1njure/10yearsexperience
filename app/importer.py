@@ -289,7 +289,10 @@ class Importer:
         if not product_id:
             return extra
         if "stock" in self.config.scope and str(row.get("quantity", "")).strip():
-            await self._set_stock(product_id, row.get("quantity"))
+            try:
+                await self._set_stock(product_id, row.get("quantity"))
+            except Exception as exc:  # product already saved; don't fail the row
+                extra.append(f"stock not set ({exc})")
         if image_urls and "images" in self.config.scope:
             ok = await self._upload_images(product_id, image_urls)
             extra.append(f"{ok}/{len(image_urls)} image(s) uploaded")
