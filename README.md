@@ -34,6 +34,41 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 You can also enter the URL + key directly in the **Settings** tab and click
 **Test connection** without editing `.env`.
 
+## Run with Docker (recommended for a clean, isolated setup)
+
+No local Python needed — just Docker.
+
+```bash
+# from the repo root
+docker compose up --build
+
+# then open
+http://127.0.0.1:8000
+```
+
+Notes:
+
+- The port is published to **`127.0.0.1` only**, so the tool stays reachable
+  from your machine and is not exposed to your network — matching the
+  localhost-only security model.
+- Import **history and saved mapping profiles** persist in a named Docker
+  volume (`importer-data`), so they survive `docker compose down`/`up`.
+- Credentials: either create a `.env` (see `.env.example`) — it is picked up
+  automatically and is optional — or just type the shop URL + key into the
+  **Settings** tab at runtime.
+- Stop with `docker compose down`. To wipe the stored history/profiles too,
+  add `-v`.
+
+Without compose, the equivalent plain Docker commands are:
+
+```bash
+docker build -t prestashop-supplier-importer .
+docker run --rm -p 127.0.0.1:8000:8000 \
+  -v importer-data:/app/appdata \
+  --env-file .env \
+  prestashop-supplier-importer
+```
+
 ## Generating a Webservice key in PrestaShop
 
 1. Back office → **Advanced Parameters → Webservice**.

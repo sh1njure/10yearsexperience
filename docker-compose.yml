@@ -1,0 +1,25 @@
+# Run with:  docker compose up --build
+# Then open: http://127.0.0.1:8000
+services:
+  importer:
+    build: .
+    image: prestashop-supplier-importer
+    container_name: prestashop-importer
+    ports:
+      # Bind to the host loopback only — the tool stays localhost-only.
+      - "127.0.0.1:8000:8000"
+    env_file:
+      # Optional: put PRESTASHOP_URL / PRESTASHOP_API_KEY here. You can also
+      # just enter them in the Settings tab at runtime, so .env is not required.
+      - path: .env
+        required: false
+    environment:
+      DATABASE_PATH: /app/appdata/app.sqlite3
+      DEFAULT_LANG_ID: "1"
+    volumes:
+      # Persist import history + saved mapping profiles across restarts.
+      - importer-data:/app/appdata
+    restart: unless-stopped
+
+volumes:
+  importer-data:
