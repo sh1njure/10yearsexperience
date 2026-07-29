@@ -135,6 +135,11 @@ class Importer:
         if not str(simple.get("link_rewrite", "")).strip() and simple.get("name"):
             simple["link_rewrite"] = xml_builder.slugify(str(simple["name"]))
 
+        # A product created via the Webservice without state=1 is treated as a
+        # temporary draft: hidden from the catalog list and later auto-deleted.
+        # Force the "saved" state so the product actually shows up.
+        simple.setdefault("state", "1")
+
         # Convert a tax-included price to the tax-excluded value the API stores.
         if (self.config.price_includes_tax and self.config.tax_rate > 0
                 and simple.get("price")):
