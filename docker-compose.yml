@@ -19,6 +19,12 @@ services:
     volumes:
       # Persist import history + saved mapping profiles across restarts.
       - importer-data:/app/appdata
+    # Lets the container reach a PrestaShop running on the host machine.
+    # If your shop is on the host (e.g. http://localhost:8080), set the
+    # Shop base URL to http://host.docker.internal:8080 in the Settings tab.
+    # (Works out of the box on Docker Desktop; this line is needed on Linux.)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
 volumes:

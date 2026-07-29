@@ -57,6 +57,19 @@ docker compose up --build
 http://127.0.0.1:8000
 ```
 
+### Connecting to a PrestaShop on your own machine
+
+If your shop runs on the **host** (e.g. `http://localhost:8080`), do **not**
+use `localhost` in the Shop base URL — inside the container `localhost` is the
+container itself. Use:
+
+```
+http://host.docker.internal:8080
+```
+
+The compose file already maps `host.docker.internal` to the host gateway so
+this works on Linux as well as Docker Desktop.
+
 Notes:
 
 - The port is published to **`127.0.0.1` only**, so the tool stays reachable
