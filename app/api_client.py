@@ -13,6 +13,7 @@ orchestration) live in the other modules.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
@@ -87,10 +88,11 @@ class PrestaShopClient:
     """
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0,
-                 default_lang_id: int = 1):
+                 default_lang_id: int = 1, max_retries: int = 2):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.default_lang_id = default_lang_id
+        self.max_retries = max_retries
         # Key as username, empty password.
         self._auth = httpx.BasicAuth(api_key, "")
         self._client = httpx.AsyncClient(
@@ -121,31 +123,54 @@ class PrestaShopClient:
                        headers: dict | None = None,
                        files: dict | None = None) -> httpx.Response:
         url = self._url(path)
-        try:
-            resp = await self._client.request(
-                method, url, params=params, content=content,
-                headers=headers, files=files,
-            )
-        except httpx.HTTPError as exc:  # network / TLS / timeout
-            raise PrestaShopError(f"Request to {url} failed: {exc}") from exc
+        # Idempotent reads are retried on transient 5xx (a local PrestaShop can
+        # briefly 500 under a burst of lookups). Writes are retried at a higher
+        # level (importer) so we don't risk double-creating here.
+        retryable = method.upper() in ("GET", "HEAD")
+        delay = 1.0
+        attempts = self.max_retries + 1 if retryable else 1
+        for attempt in range(attempts):
+            try:
+                resp = await self._client.request(
+                    method, url, params=params, content=content,
+                    headers=headers, files=files,
+                )
+            except httpx.HTTPError as exc:  # network / TLS / timeout
+                raise PrestaShopError(f"Request to {url} failed: {exc}") from exc
 
-        if resp.status_code == 401:
-            raise PrestaShopError(
-                "Authentication failed (401). Check the Webservice API key and "
-                "that the Webservice is enabled.",
-                status_code=401,
-                body=resp.text,
-            )
-        return resp
+            if resp.status_code == 401:
+                raise PrestaShopError(
+                    "Authentication failed (401). Check the Webservice API key "
+                    "and that the Webservice is enabled.",
+                    status_code=401, body=resp.text,
+                )
+            if retryable and 500 <= resp.status_code < 600 and attempt < attempts - 1:
+                await asyncio.sleep(delay)
+                delay *= 2
+                continue
+            return resp
 
     @staticmethod
     def _raise_for_ps_errors(resp: httpx.Response) -> None:
         """Turn a PrestaShop error response into a readable exception."""
         if resp.status_code < 400:
             return
-        message = PrestaShopClient.extract_error_message(resp.text) or resp.text
+        message = PrestaShopClient.extract_error_message(resp.text)
+        if not message:
+            body = (resp.text or "").strip()
+            # PrestaShop 5xx returns a full HTML page — don't dump it.
+            if body[:15].lower().startswith(("<!doctype", "<html")):
+                message = "server error (HTML page returned, not an API response)"
+            else:
+                message = body[:300] or resp.reason_phrase
+        path = ""
+        try:
+            path = resp.request.url.path
+        except Exception:
+            pass
+        where = f" on {path}" if path else ""
         raise PrestaShopError(
-            f"PrestaShop returned {resp.status_code}: {message}",
+            f"PrestaShop returned {resp.status_code}{where}: {message}",
             status_code=resp.status_code,
             body=resp.text,
         )
