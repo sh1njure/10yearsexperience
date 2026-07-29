@@ -123,6 +123,12 @@ class Importer:
         """
         simple = {k: v for k, v in row.items()
                   if k not in SPECIAL_FIELDS and v not in (None, "")}
+
+        # link_rewrite must be a valid slug or the product silently fails
+        # validation. If it isn't mapped, derive it from the name.
+        if not str(simple.get("link_rewrite", "")).strip() and simple.get("name"):
+            simple["link_rewrite"] = xml_builder.slugify(str(simple["name"]))
+
         associations: dict[str, object] = {}
         image_urls: list[str] = []
         notes: list[str] = []
