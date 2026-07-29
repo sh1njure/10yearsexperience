@@ -1,5 +1,5 @@
 # Run with:  docker compose up --build
-# Then open: http://127.0.0.1:8000
+# Then open: http://127.0.0.1:8010  (override with APP_PORT in .env)
 services:
   importer:
     build: .
@@ -7,7 +7,9 @@ services:
     container_name: prestashop-importer
     ports:
       # Bind to the host loopback only — the tool stays localhost-only.
-      - "127.0.0.1:8000:8000"
+      # Host port defaults to 8010 (8000 is often taken by Portainer);
+      # change it by setting APP_PORT in .env. Container port stays 8000.
+      - "127.0.0.1:${APP_PORT:-8010}:8000"
     env_file:
       # Optional: put PRESTASHOP_URL / PRESTASHOP_API_KEY here. You can also
       # just enter them in the Settings tab at runtime, so .env is not required.

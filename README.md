@@ -44,8 +44,12 @@ No local Python needed — just Docker.
 git clone https://github.com/sh1njure/10yearsexperience.git && cd 10yearsexperience && docker compose up --build -d
 ```
 
-Then open **http://127.0.0.1:8000**. Stop it with `docker compose down` from the
+Then open **http://127.0.0.1:8010**. Stop it with `docker compose down` from the
 repo folder.
+
+> The app is published on host port **8010** by default (port 8000 is commonly
+> taken by Portainer). To use a different port, set `APP_PORT` in `.env`
+> (e.g. `APP_PORT=8020`) and open that port instead.
 
 ### Or step by step
 
@@ -54,7 +58,7 @@ repo folder.
 docker compose up --build
 
 # then open
-http://127.0.0.1:8000
+http://127.0.0.1:8010
 ```
 
 ### Connecting to a PrestaShop on your own machine
@@ -87,7 +91,7 @@ Without compose, the equivalent plain Docker commands are:
 
 ```bash
 docker build -t prestashop-supplier-importer .
-docker run --rm -p 127.0.0.1:8000:8000 \
+docker run --rm -p 127.0.0.1:8010:8000 \
   -v importer-data:/app/appdata \
   --env-file .env \
   prestashop-supplier-importer
