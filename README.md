@@ -38,6 +38,18 @@ You can also enter the URL + key directly in the **Settings** tab and click
 
 No local Python needed — just Docker.
 
+### One-line download + install
+
+```bash
+git clone -b claude/prestashop-product-importer-spidv8 https://github.com/sh1njure/10yearsexperience.git && cd 10yearsexperience && docker compose up --build -d
+```
+
+Then open **http://127.0.0.1:8000**. (Once this branch is merged into the
+default branch you can drop the `-b claude/prestashop-product-importer-spidv8`
+flag.) Stop it with `docker compose down` from the repo folder.
+
+### Or step by step
+
 ```bash
 # from the repo root
 docker compose up --build
