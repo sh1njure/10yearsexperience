@@ -320,7 +320,8 @@ class PrestaShopClient:
             "POST", f"images/products/{product_id}", files=files,
         )
         self._raise_for_ps_errors(resp)
-        return {"status_code": resp.status_code, "body": resp.text}
+        return {"status_code": resp.status_code, "body": resp.text,
+                "id": self._extract_id(resp.text)}
 
     @staticmethod
     def _extract_id(body: str) -> int | None:

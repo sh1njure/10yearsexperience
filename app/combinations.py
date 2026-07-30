@@ -9,6 +9,7 @@ Reuses the products importer's retry/result plumbing.
 from __future__ import annotations
 
 import asyncio
+from xml.etree import ElementTree as ET
 
 from .api_client import PrestaShopClient
 from .resolver import Resolver, parse_attribute_pairs, split_list
@@ -130,6 +131,15 @@ class CombinationImporter:
                     notes.append(f"product type not switched ({exc})")
                 self._typed_products.add(product_id)
 
+            if combo_id and "images" in self.config.scope and str(row.get("images", "")).strip():
+                try:
+                    n = await self._attach_images(product_id, combo_id,
+                                                  split_list(str(row["images"])))
+                    if n:
+                        notes.append(f"{n} image(s) attached")
+                except Exception as exc:
+                    notes.append(f"images not attached ({exc})")
+
             if combo_id and "stock" in self.config.scope:
                 try:
                     await self._set_stock(product_id, combo_id, row.get("quantity"))
@@ -146,6 +156,50 @@ class CombinationImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    async def _attach_images(self, product_id: int, combo_id: int,
+                             urls: list[str]) -> int:
+        """Upload combination images to the product and link them to the combo.
+
+        Skips if the combination already has images, so re-runs don't pile up
+        duplicate product images. Attribute links are preserved.
+        """
+        from .api_client import _localname  # local import, avoid cycle at top
+        combo_xml = await self.client.get_xml(f"combinations/{combo_id}")
+        root = ET.fromstring(combo_xml)
+        combo_el = next(iter(root))
+        assoc = next((el for el in combo_el
+                      if _localname(el.tag) == "associations"), None)
+        if assoc is not None:
+            images_el = next((el for el in assoc
+                              if _localname(el.tag) == "images"), None)
+            if images_el is not None and len(images_el):
+                return 0  # already has images
+
+        ids: list[int] = []
+        for url in urls:
+            try:
+                data, filename, ctype = await self.resolver.fetch_image(url)
+                res = await self.client.upload_image(product_id, data, filename, ctype)
+                if res.get("id"):
+                    ids.append(res["id"])
+            except Exception:
+                continue  # continue-on-error per image
+        if not ids:
+            return 0
+
+        if assoc is None:
+            assoc = ET.SubElement(combo_el, "associations")
+        images_el = ET.SubElement(assoc, "images")
+        for iid in ids:
+            im = ET.SubElement(images_el, "image")
+            ET.SubElement(im, "id").text = str(iid)
+        payload = xml_builder.build_update_xml(
+            ET.tostring(root, encoding="unicode"), {}, lang_id=self.config.lang_id)
+        await _with_retry(
+            lambda: self.client.update("combinations", combo_id, payload),
+            max_retries=self.config.max_retries)
+        return len(ids)
 
     async def _ensure_combination_type(self, product_id: int) -> None:
         """Switch the parent product to "Product with combinations" (PS 8)."""

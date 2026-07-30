@@ -144,6 +144,14 @@ def _set_associations(resource_el: ET.Element, associations: dict[str, object]) 
             pov = ET.SubElement(povs, "product_option_value")
             ET.SubElement(pov, "id").text = str(vid)
 
+    # Image links (used by combinations to reference product images).
+    images = associations.get("images") or []
+    if images:
+        imgs = ET.SubElement(assoc_el, "images")
+        for iid in images:
+            im = ET.SubElement(imgs, "image")
+            ET.SubElement(im, "id").text = str(iid)
+
     # If nothing was added, drop the empty element again.
     if len(assoc_el) == 0:
         resource_el.remove(assoc_el)
