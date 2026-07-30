@@ -42,7 +42,7 @@ function setMode(mode) {
   badge.classList.remove("hidden");
   // Sensible default scope per mode.
   let on = ["products"];
-  if (S.importType === "combinations") on = ["combinations", "stock", "images"];
+  if (S.importType === "combinations") on = ["combinations", "stock", "images", "descriptions"];
   else if (S.importType === "combination_descriptions") on = [];
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
   // Tax conversion only applies to product prices.

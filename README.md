@@ -169,7 +169,14 @@ Each row is one combination linked to its parent product by reference:
 
 Import products **first**, then combinations, so the parent products exist.
 
-### Combination descriptions
+**One-pass descriptions:** turn on the **Descriptions** scope and add
+`Description` / `Short description` columns to the combinations sheet — each
+combination's description is written in the same pass that creates/updates the
+combination (no separate import needed). This needs the Combination Descriptions
+module installed and its Webservice permission enabled. Rows without description
+text just skip that step.
+
+### Combination descriptions (standalone)
 
 Set **Import type = Combination descriptions** on the Mapping tab to bulk-load
 per-combination description text. This targets the `combination_descriptions`

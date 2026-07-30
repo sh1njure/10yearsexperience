@@ -15,6 +15,7 @@ from .api_client import PrestaShopClient
 from .resolver import Resolver, parse_attribute_pairs, split_list
 from .importer import ImportConfig, Mode, RowResult, ProgressCb, _with_retry
 from .validator import parse_number
+from .combination_descriptions import CombinationDescriptionImporter
 from . import xml_builder
 
 
@@ -28,6 +29,9 @@ class CombinationImporter:
             client, lang_id=config.lang_id,
             create_missing=config.create_missing and not config.dry_run,
         )
+        # Reused to set a per-combination description in the same pass, when the
+        # "descriptions" scope is on and the row carries description text.
+        self.desc_importer = CombinationDescriptionImporter(client, config)
 
     async def _schema(self) -> str:
         if self._blank_schema is None:
@@ -90,6 +94,10 @@ class CombinationImporter:
                     schema, simple, associations=associations,
                     lang_id=self.config.lang_id)
                 msg = "Combination payload built (not sent)."
+                if ("descriptions" in self.config.scope
+                        and (str(row.get("description", "")).strip()
+                             or str(row.get("description_short", "")).strip())):
+                    msg += " A combination description would also be set."
                 if notes:
                     msg += " Note: " + "; ".join(notes) + "."
                 return RowResult(index, reference, "dry-run", True, msg,
@@ -146,6 +154,22 @@ class CombinationImporter:
                 except Exception as exc:  # combination itself already succeeded
                     notes.append(f"stock not set ({exc})")
 
+            # Per-combination description, written in the same pass. The
+            # combination_descriptions resource is idempotent, so this is safe on
+            # re-runs. Requires the Combination Descriptions module + its
+            # Webservice permission.
+            if (combo_id and "descriptions" in self.config.scope
+                    and (str(row.get("description", "")).strip()
+                         or str(row.get("description_short", "")).strip())):
+                try:
+                    d_action = await self.desc_importer.write_for_combination(
+                        int(combo_id), product_id, self._desc_shop_id(row),
+                        row.get("description"), row.get("description_short"))
+                    if d_action:
+                        notes.append(f"description {d_action}")
+                except Exception as exc:  # combination itself already succeeded
+                    notes.append(f"description not set ({exc})")
+
             extra = f" ({len(value_ids)} attribute(s))"
             if notes:
                 extra += " Note: " + "; ".join(notes)
@@ -156,6 +180,17 @@ class CombinationImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    @staticmethod
+    def _desc_shop_id(row: dict[str, object]) -> int | None:
+        """Optional id_shop for the description row (None -> module default)."""
+        raw = row.get("id_shop")
+        if raw in (None, ""):
+            return None
+        try:
+            return int(str(raw).strip())
+        except (TypeError, ValueError):
+            return None
 
     async def _attach_images(self, product_id: int, combo_id: int,
                              urls: list[str]) -> int:

@@ -93,3 +93,27 @@ def test_mapping_targets_expose_reference_and_text_fields():
     for expected in ("reference", "id_product_attribute",
                      "description", "description_short"):
         assert expected in COMBINATION_DESCRIPTION_TARGETS
+
+
+def test_combination_targets_include_description_fields():
+    # Combinations import can also carry description columns (one-pass import).
+    from app.routers.mapping import COMBINATION_TARGETS
+    assert "description" in COMBINATION_TARGETS
+    assert "description_short" in COMBINATION_TARGETS
+
+
+def test_write_for_combination_skips_when_no_text():
+    # No description text -> no API call, returns None (short-circuits before
+    # touching the network).
+    import asyncio
+    from app.api_client import PrestaShopClient
+    from app.combination_descriptions import CombinationDescriptionImporter
+    from app.importer import ImportConfig
+
+    client = PrestaShopClient("http://example.invalid", "key")
+    imp = CombinationDescriptionImporter(client, ImportConfig())
+    try:
+        assert asyncio.run(
+            imp.write_for_combination(12, 45, 1, "", None)) is None
+    finally:
+        asyncio.run(client.aclose())

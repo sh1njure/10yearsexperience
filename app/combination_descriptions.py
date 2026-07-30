@@ -98,32 +98,11 @@ class CombinationDescriptionImporter:
                                  "Description payload built (not sent).",
                                  product_id=id_pa, payload=payload)
 
-            existing_id = await self._find_description(id_pa, id_shop)
-
-            if existing_id:
-                if self.config.mode == Mode.CREATE_ONLY:
-                    return RowResult(index, reference, "skipped", True,
-                                     "Description exists; create-only mode.",
-                                     product_id=id_pa)
-                existing = await self.client.get_xml(f"{RESOURCE}/{existing_id}")
-                payload = xml_builder.build_update_xml(
-                    existing, values, lang_id=self.config.lang_id)
-                await _with_retry(
-                    lambda: self.client.update(RESOURCE, existing_id, payload),
-                    max_retries=self.config.max_retries)
-                action = "updated"
-            else:
-                if self.config.mode == Mode.UPDATE_ONLY:
-                    return RowResult(index, reference, "skipped", True,
-                                     "Description not found; update-only mode.",
-                                     product_id=id_pa)
-                payload = xml_builder.build_create_xml(
-                    schema, values, lang_id=self.config.lang_id)
-                await _with_retry(
-                    lambda: self.client.create(RESOURCE, payload),
-                    max_retries=self.config.max_retries)
-                action = "created"
-
+            action = await self._upsert(id_pa, id_shop, values, schema)
+            if action == "skipped":
+                return RowResult(index, reference, "skipped", True,
+                                 "Description exists/absent for the selected mode.",
+                                 product_id=id_pa)
             return RowResult(index, reference, action, True,
                              f"Description {action} (id_product_attribute {id_pa}).",
                              product_id=id_pa)
@@ -131,6 +110,61 @@ class CombinationDescriptionImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    async def _upsert(self, id_pa: int, id_shop: int | None,
+                      values: dict[str, object], schema: str) -> str:
+        """Create or update the description row; return the action taken.
+
+        Honours the create-only / update-only / upsert mode. Returns one of
+        "created", "updated" or "skipped".
+        """
+        existing_id = await self._find_description(id_pa, id_shop)
+        if existing_id:
+            if self.config.mode == Mode.CREATE_ONLY:
+                return "skipped"
+            existing = await self.client.get_xml(f"{RESOURCE}/{existing_id}")
+            payload = xml_builder.build_update_xml(
+                existing, values, lang_id=self.config.lang_id)
+            await _with_retry(
+                lambda: self.client.update(RESOURCE, existing_id, payload),
+                max_retries=self.config.max_retries)
+            return "updated"
+        if self.config.mode == Mode.UPDATE_ONLY:
+            return "skipped"
+        payload = xml_builder.build_create_xml(
+            schema, values, lang_id=self.config.lang_id)
+        await _with_retry(
+            lambda: self.client.create(RESOURCE, payload),
+            max_retries=self.config.max_retries)
+        return "created"
+
+    async def write_for_combination(self, id_pa: int, id_product: int | None,
+                                    id_shop: int | None, description: object,
+                                    description_short: object) -> str | None:
+        """Write one combination's description given an already-known combination.
+
+        Used by the combinations importer to set a description in the same pass
+        that creates/updates the combination. Returns the action ("created",
+        "updated", "skipped") or None when the row carries no description text.
+        """
+        values: dict[str, object] = {"id_product_attribute": str(id_pa)}
+        if id_product:
+            values["id_product"] = str(id_product)
+        if id_shop is not None:
+            values["id_shop"] = str(id_shop)
+
+        has_text = False
+        if description not in (None, ""):
+            values["description"] = str(description)
+            has_text = True
+        if description_short not in (None, ""):
+            values["description_short"] = str(description_short)
+            has_text = True
+        if not has_text:
+            return None
+
+        schema = await self._schema()
+        return await self._upsert(id_pa, id_shop, values, schema)
 
     def _shop_id(self, row: dict[str, object]) -> int | None:
         """Explicit id_shop from the row, else None (module defaults to the

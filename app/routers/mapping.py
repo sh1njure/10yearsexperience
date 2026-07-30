@@ -17,6 +17,9 @@ COMBINATION_TARGETS = [
     "product_reference", "attributes", "values", "reference",
     "supplier_reference", "ean13", "price_impact", "quantity",
     "minimal_quantity", "default", "images",
+    # Optional: set a per-combination description in the same pass (needs the
+    # "descriptions" scope + the Combination Descriptions module).
+    "description", "description_short",
 ]
 
 # Canonical mapping targets for a combination-descriptions import. The
