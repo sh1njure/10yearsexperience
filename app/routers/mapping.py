@@ -19,6 +19,14 @@ COMBINATION_TARGETS = [
     "minimal_quantity", "default", "images",
 ]
 
+# Canonical mapping targets for a combination-descriptions import. The
+# combination is identified by its reference (resolved to id_product_attribute)
+# or by an explicit id_product_attribute; id_product / id_shop are optional.
+COMBINATION_DESCRIPTION_TARGETS = [
+    "reference", "id_product_attribute", "id_product", "id_shop",
+    "description", "description_short",
+]
+
 
 @router.post("/{token}/automatch")
 async def automatch(token: str, resource: str = "products",
@@ -34,6 +42,8 @@ async def automatch(token: str, resource: str = "products",
 
     if import_type == "combinations":
         field_names = list(COMBINATION_TARGETS)
+    elif import_type == "combination_descriptions":
+        field_names = list(COMBINATION_DESCRIPTION_TARGETS)
     else:
         s = get_settings()
         async with PrestaShopClient(s.normalized_url, s.prestashop_api_key,

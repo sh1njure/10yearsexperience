@@ -15,6 +15,7 @@ from ..api_client import PrestaShopClient
 from ..config import get_settings
 from ..importer import Importer, ImportConfig, Mode
 from ..combinations import CombinationImporter
+from ..combination_descriptions import CombinationDescriptionImporter
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -80,10 +81,12 @@ async def run(token: str, payload: RunIn):
     rows = _build_rows(session)
 
     combinations_mode = payload.import_type == "combinations"
+    descriptions_mode = payload.import_type == "combination_descriptions"
 
-    # Product validation only applies to product imports; combinations have a
-    # different required-field shape (checked implicitly during resolution).
-    if not combinations_mode:
+    # Product validation only applies to product imports; combinations and
+    # combination descriptions have a different required-field shape (checked
+    # implicitly during resolution).
+    if not combinations_mode and not descriptions_mode:
         issues = validator.validate(rows, _mapped_fields(session))
         if validator.has_blocking_errors(issues):
             raise HTTPException(400, "Validation errors block the import. "
@@ -106,8 +109,12 @@ async def run(token: str, payload: RunIn):
     async def event_stream():
         client = PrestaShopClient(s.normalized_url, s.prestashop_api_key,
                                   default_lang_id=s.default_lang_id)
-        importer = (CombinationImporter(client, config) if combinations_mode
-                    else Importer(client, config))
+        if descriptions_mode:
+            importer = CombinationDescriptionImporter(client, config)
+        elif combinations_mode:
+            importer = CombinationImporter(client, config)
+        else:
+            importer = Importer(client, config)
         queue: asyncio.Queue = asyncio.Queue()
         collected: list = []
 

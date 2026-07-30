@@ -169,6 +169,30 @@ Each row is one combination linked to its parent product by reference:
 
 Import products **first**, then combinations, so the parent products exist.
 
+### Combination descriptions
+
+Set **Import type = Combination descriptions** on the Mapping tab to bulk-load
+per-combination description text. This targets the `combination_descriptions`
+Webservice resource added by the **Combination Descriptions** PrestaShop module,
+so that module must be installed and its resource permission enabled on the API
+key (View/Modify/Add/Delete).
+
+Each row is one combination's description, matched to the combination by
+reference (the same reference the combinations import writes):
+
+| Column | Used for |
+|--------|----------|
+| Reference | combination lookup → `id_product_attribute` |
+| id_product_attribute | optional: use the id directly and skip the reference lookup |
+| id_shop | optional: target shop (defaults to the shop context) |
+| Description | long HTML description (multilingual, uses the configured language id) |
+| Short description | short HTML description (multilingual) |
+
+Idempotent on `(id_product_attribute, id_shop)`: re-running a sheet updates
+rows in place and never duplicates. Import products → combinations →
+combination descriptions in that order, so the combinations exist to match
+against.
+
 ## PrestaShop API rules respected
 
 - Always fetch `?schema=blank` and fill the skeleton — XML is **never**
@@ -190,7 +214,9 @@ app/
   excel_parser.py  # .xlsx/.csv reading, preview, header-row selection
   mapper.py        # header → field matching cascade
   validator.py     # pre-import checks
-  importer.py      # row-by-row import orchestration (dry-run, retry, concurrency)
+  importer.py      # row-by-row product import orchestration (dry-run, retry, concurrency)
+  combinations.py  # combination (variant) importer
+  combination_descriptions.py  # per-combination description importer (combination_descriptions resource)
   xml_builder.py   # fills the ?schema=blank skeleton, strips read-only, i18n
   db.py            # SQLite: mapping profiles + import history
   config.py        # .env-backed settings
