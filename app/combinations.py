@@ -22,6 +22,7 @@ class CombinationImporter:
         self.client = client
         self.config = config
         self._blank_schema: str | None = None
+        self._typed_products: set[int] = set()  # products switched to "combinations"
         self.resolver = Resolver(
             client, lang_id=config.lang_id,
             create_missing=config.create_missing and not config.dry_run,
@@ -120,6 +121,15 @@ class CombinationImporter:
                 combo_id = created.get("id")
                 action = "created"
 
+            # PrestaShop 8 only shows the Combinations tab when the product's
+            # type is "combinations"; API-created products are "standard".
+            if product_id not in self._typed_products:
+                try:
+                    await self._ensure_combination_type(product_id)
+                except Exception as exc:
+                    notes.append(f"product type not switched ({exc})")
+                self._typed_products.add(product_id)
+
             if combo_id and "stock" in self.config.scope:
                 try:
                     await self._set_stock(product_id, combo_id, row.get("quantity"))
@@ -136,6 +146,15 @@ class CombinationImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    async def _ensure_combination_type(self, product_id: int) -> None:
+        """Switch the parent product to "Product with combinations" (PS 8)."""
+        existing = await self.client.get_xml(f"products/{product_id}")
+        payload = xml_builder.build_update_xml(
+            existing, {"product_type": "combinations"}, lang_id=self.config.lang_id)
+        await _with_retry(
+            lambda: self.client.update("products", product_id, payload),
+            max_retries=self.config.max_retries)
 
     async def _find_combination(self, reference: str) -> int | None:
         data = await self.client.get_json(

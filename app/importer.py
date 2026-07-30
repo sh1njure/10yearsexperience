@@ -213,9 +213,9 @@ class Importer:
                 return RowResult(index, reference, "dry-run", True, msg,
                                  payload=payload)
 
-            existing_id = None
-            if self.config.mode in (Mode.UPDATE_ONLY, Mode.UPSERT) and reference:
-                existing_id = await self._find_by_reference(reference)
+            # Always look up by reference first so create-only stays idempotent
+            # and never creates duplicate products on a re-run.
+            existing_id = await self._find_by_reference(reference) if reference else None
 
             if existing_id:
                 if self.config.mode == Mode.CREATE_ONLY:
