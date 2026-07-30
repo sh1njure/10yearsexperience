@@ -135,8 +135,8 @@ class CombinationImporter:
                 try:
                     n = await self._attach_images(product_id, combo_id,
                                                   split_list(str(row["images"])))
-                    if n:
-                        notes.append(f"{n} image(s) attached")
+                    notes.append(f"{n} image(s) attached" if n
+                                 else "images: nothing uploaded")
                 except Exception as exc:
                     notes.append(f"images not attached ({exc})")
 
@@ -177,15 +177,22 @@ class CombinationImporter:
                 return 0  # already has images
 
         ids: list[int] = []
+        errors: list[str] = []
         for url in urls:
+            name = url.rsplit("/", 1)[-1] or url
             try:
                 data, filename, ctype = await self.resolver.fetch_image(url)
                 res = await self.client.upload_image(product_id, data, filename, ctype)
                 if res.get("id"):
                     ids.append(res["id"])
-            except Exception:
-                continue  # continue-on-error per image
+                else:
+                    errors.append(f"{name}: upload returned no id")
+            except Exception as exc:  # keep going, but remember why
+                errors.append(f"{name}: {type(exc).__name__}: {exc}")
         if not ids:
+            # Surface the real reason instead of silently returning 0.
+            if errors:
+                raise RuntimeError("; ".join(errors[:2]))
             return 0
 
         if assoc is None:
