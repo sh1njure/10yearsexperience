@@ -68,13 +68,15 @@ class CombinationDescriptionImporter:
                     "Combination not found "
                     f"(reference '{reference}' / id_product_attribute unset).")
 
-            id_shop = self._shop_id(row)
+            # id_shop must be a positive shop id — PrestaShop rejects 0/empty on
+            # the combination_descriptions resource. Default to shop 1 when the
+            # sheet doesn't specify one (single-shop installs).
+            id_shop = self._shop_id(row) or 1
 
             values: dict[str, object] = {"id_product_attribute": str(id_pa)}
             if id_product:
                 values["id_product"] = str(id_product)
-            if id_shop is not None:
-                values["id_shop"] = str(id_shop)
+            values["id_shop"] = str(id_shop)
 
             has_text = False
             for src, dst in (("description", "description"),
@@ -150,8 +152,9 @@ class CombinationDescriptionImporter:
         values: dict[str, object] = {"id_product_attribute": str(id_pa)}
         if id_product:
             values["id_product"] = str(id_product)
-        if id_shop is not None:
-            values["id_shop"] = str(id_shop)
+        # Positive shop id required (see _process_row); default to shop 1.
+        id_shop = id_shop or 1
+        values["id_shop"] = str(id_shop)
 
         has_text = False
         if description not in (None, ""):
