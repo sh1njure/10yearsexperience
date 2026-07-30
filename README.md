@@ -166,20 +166,26 @@ Each row is one combination linked to its parent product by reference:
 | Impact on price | combination `price` (delta) |
 | Quantity | stock for the combination (via stock_availables) |
 | Minimal quantity, Default (0/1) | `minimal_quantity`, `default_on` |
+| Description / Short description | per-combination description (see below) |
 
 Import products **first**, then combinations, so the parent products exist.
 
-**One-pass descriptions:** turn on the **Descriptions** scope and add
-`Description` / `Short description` columns to the combinations sheet — each
-combination's description is written in the same pass that creates/updates the
-combination (no separate import needed). This needs the Combination Descriptions
-module installed and its Webservice permission enabled. Rows without description
-text just skip that step.
+**Descriptions in the same pass:** the **Descriptions** scope is on by default in
+Combinations mode. Add a `Description` (and optionally `Short description`)
+column to the combinations sheet and each combination's description is written
+in the same pass that creates/updates the combination — no separate import step.
+This needs the Combination Descriptions module installed and its Webservice
+permission enabled. Rows without description text just skip that step.
 
-### Combination descriptions (standalone)
+The import tool has **two modes only** — Products and Combinations — with
+descriptions folded into Combinations.
 
-Set **Import type = Combination descriptions** on the Mapping tab to bulk-load
-per-combination description text. This targets the `combination_descriptions`
+### Combination descriptions (advanced / API)
+
+The `combination_descriptions` resource can also be written on its own via the
+API (`CombinationDescriptionImporter` / the `import_type=combination_descriptions`
+endpoint) without touching combinations. This targets the
+`combination_descriptions`
 Webservice resource added by the **Combination Descriptions** PrestaShop module,
 so that module must be installed and its resource permission enabled on the API
 key (View/Modify/Add/Delete).

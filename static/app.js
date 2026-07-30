@@ -29,24 +29,19 @@ $$(".tab").forEach((t) => t.addEventListener("click", () => activateTab(t.datase
 const S = { token: null, headers: [], psFields: [], matches: [], importType: "products" };
 
 // -------------------------- import mode ------------------------------- //
-const MODE_LABELS = {
-  products: "Products",
-  combinations: "Combinations",
-  combination_descriptions: "Combination descriptions",
-};
-
 function setMode(mode) {
-  S.importType = MODE_LABELS[mode] ? mode : "products";
+  S.importType = mode === "combinations" ? "combinations" : "products";
   const badge = $("#modeBadge");
-  badge.textContent = "Mode: " + MODE_LABELS[S.importType];
+  badge.textContent = "Mode: " + (S.importType === "combinations" ? "Combinations" : "Products");
   badge.classList.remove("hidden");
-  // Sensible default scope per mode.
-  let on = ["products"];
-  if (S.importType === "combinations") on = ["combinations", "stock", "images", "descriptions"];
-  else if (S.importType === "combination_descriptions") on = [];
+  // Sensible default scope per mode. Combinations includes descriptions so a
+  // single sheet can set a per-combination description in the same pass.
+  const on = S.importType === "combinations"
+    ? ["combinations", "stock", "images", "descriptions"]
+    : ["products"];
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
   // Tax conversion only applies to product prices.
-  $("#priceTaxRow").classList.toggle("hidden", S.importType !== "products");
+  $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");
   $("#modeOverlay").classList.add("hidden");
 }
 $$("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));

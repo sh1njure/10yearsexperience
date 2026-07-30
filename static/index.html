@@ -31,24 +31,20 @@
 
   <!-- ── Start screen: choose import type ─────────────────────────── -->
   <div id="modeOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-    <div class="card w-full max-w-3xl p-8">
+    <div class="card w-full max-w-xl p-8">
       <h2 class="text-xl font-bold text-slate-900">What are you importing?</h2>
       <p class="text-sm text-slate-500 mt-1">Pick how this session should work. The steps below adapt to your choice — you can switch anytime.</p>
-      <div class="grid sm:grid-cols-3 gap-4 mt-6">
+      <div class="grid sm:grid-cols-2 gap-4 mt-6">
         <button data-mode="products" class="mode-card text-left border border-slate-200 rounded-xl p-5">
           <span class="block text-base font-semibold text-slate-900">Products</span>
           <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Main product records — name, price, categories, brand, images and features.</span>
         </button>
         <button data-mode="combinations" class="mode-card text-left border border-slate-200 rounded-xl p-5">
           <span class="block text-base font-semibold text-slate-900">Combinations</span>
-          <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Variants of existing products — attributes, references, price impact and stock.</span>
-        </button>
-        <button data-mode="combination_descriptions" class="mode-card text-left border border-slate-200 rounded-xl p-5">
-          <span class="block text-base font-semibold text-slate-900">Combination descriptions</span>
-          <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Per-combination description text — matched to combinations by reference. Requires the Combination Descriptions module.</span>
+          <span class="block text-xs text-slate-500 mt-1 leading-relaxed">Variants of existing products — attributes, references, price impact, stock and per-combination descriptions.</span>
         </button>
       </div>
-      <p class="text-xs text-slate-400 mt-5">Tip: import products first, then combinations, then their descriptions.</p>
+      <p class="text-xs text-slate-400 mt-5">Tip: import products first, then their combinations (add a Description column to set combination descriptions in the same pass).</p>
     </div>
   </div>
 
