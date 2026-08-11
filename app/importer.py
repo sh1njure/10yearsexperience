@@ -294,13 +294,28 @@ class Importer:
             except Exception as exc:  # product already saved; don't fail the row
                 extra.append(f"stock not set ({exc})")
         if image_urls and "images" in self.config.scope:
-            ok = await self._upload_images(product_id, image_urls)
-            extra.append(f"{ok}/{len(image_urls)} image(s) uploaded")
+            ok, errors = await self._upload_images(product_id, image_urls)
+            msg = f"{ok}/{len(image_urls)} image(s) uploaded"
+            if errors:
+                shown = "; ".join(errors[:3])
+                if len(errors) > 3:
+                    shown += f"; +{len(errors) - 3} more"
+                msg += f" ({shown})"
+            extra.append(msg)
         return extra
 
-    async def _upload_images(self, product_id: int, urls: list[str]) -> int:
+    async def _upload_images(self, product_id: int,
+                             urls: list[str]) -> tuple[int, list[str]]:
+        """Upload each image; keep going on failure but record WHY each failed.
+
+        Returns (uploaded_count, error_reasons). Reasons are compacted to the
+        common causes (too large / not found / timeout) so the row message stays
+        readable.
+        """
         uploaded = 0
+        errors: list[str] = []
         for url in urls:
+            name = url.rsplit("/", 1)[-1] or url
             try:
                 data, filename, ctype = await self.resolver.fetch_image(url)
                 await _with_retry(
@@ -309,9 +324,26 @@ class Importer:
                     max_retries=self.config.max_retries,
                 )
                 uploaded += 1
-            except Exception:
-                continue  # continue-on-error per image
-        return uploaded
+            except Exception as exc:  # continue-on-error per image, but say why
+                errors.append(f"{name}: {self._image_error_reason(exc)}")
+        return uploaded, errors
+
+    @staticmethod
+    def _image_error_reason(exc: Exception) -> str:
+        """Map an image failure to a short, human reason."""
+        msg = str(exc)
+        low = msg.lower()
+        if "too large" in low or "maximum allowed" in low:
+            return "too large (> 2000 KB limit)"
+        if "404" in msg or "not found" in low:
+            return "not found (404)"
+        if "403" in msg:
+            return "forbidden (403)"
+        if "timeout" in low or "timed out" in low:
+            return "download timed out"
+        if "is not valid" in low:
+            return "rejected by PrestaShop (invalid image)"
+        return type(exc).__name__
 
     @staticmethod
     def _msg(base: str, notes: list[str], extra: list[str]) -> str:
