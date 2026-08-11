@@ -11,11 +11,62 @@ All network work goes through :class:`~app.api_client.PrestaShopClient`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from io import BytesIO
 
 import httpx
 
+try:
+    from PIL import Image
+except ImportError:  # Pillow optional; without it oversized images just fail as before
+    Image = None
+
 from .api_client import PrestaShopClient, PrestaShopError, _localname
 from . import xml_builder
+
+# PrestaShop rejects product images over ~2000 KB. Shrink anything above this
+# (kept a little under the hard limit) before upload.
+MAX_IMAGE_BYTES = 1_900_000
+MAX_IMAGE_DIMENSION = 1600
+
+
+def shrink_image(content: bytes) -> tuple[bytes, str, str] | None:
+    """Downscale/recompress an oversized image under ``MAX_IMAGE_BYTES``.
+
+    Returns ``(bytes, content_type, extension)`` as JPEG (transparency flattened
+    onto white), or ``None`` if Pillow is unavailable or the data can't be read
+    (caller then uploads the original and lets PrestaShop reject it as before).
+    """
+    if Image is None:
+        return None
+    try:
+        img = Image.open(BytesIO(content))
+        img.load()
+    except Exception:
+        return None
+
+    # JPEG has no alpha — flatten transparency onto white.
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGBA")
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        background.paste(img, mask=img.split()[-1])
+        img = background
+    else:
+        img = img.convert("RGB")
+
+    if max(img.size) > MAX_IMAGE_DIMENSION:
+        img.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION))
+
+    # Drop quality (then dimensions) until it fits.
+    for quality in (85, 75, 65, 55):
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        if buf.tell() <= MAX_IMAGE_BYTES:
+            return buf.getvalue(), "image/jpeg", "jpg"
+
+    img.thumbnail((1200, 1200))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=70, optimize=True)
+    return buf.getvalue(), "image/jpeg", "jpg"
 
 
 @dataclass
@@ -314,10 +365,23 @@ class Resolver:
 
     # ------------------------------- images --------------------------- #
     async def fetch_image(self, url: str) -> tuple[bytes, str, str]:
-        """Download an image URL; return (bytes, filename, content_type)."""
+        """Download an image URL; return (bytes, filename, content_type).
+
+        Images over PrestaShop's size limit are downscaled/recompressed so the
+        upload succeeds instead of being rejected as "too large".
+        """
         async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as c:
             resp = await c.get(url)
             resp.raise_for_status()
+        content = resp.content
         content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
         filename = url.rsplit("/", 1)[-1] or "image.jpg"
-        return resp.content, filename, content_type
+
+        if len(content) > MAX_IMAGE_BYTES:
+            shrunk = shrink_image(content)
+            if shrunk is not None:
+                content, content_type, ext = shrunk
+                base = filename.rsplit(".", 1)[0] if "." in filename else filename
+                filename = f"{base}.{ext}"
+
+        return content, filename, content_type
