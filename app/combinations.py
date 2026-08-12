@@ -9,6 +9,7 @@ Reuses the products importer's retry/result plumbing.
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from xml.etree import ElementTree as ET
 
 from .api_client import PrestaShopClient
@@ -81,8 +82,21 @@ class CombinationImporter:
                              ("minimal_quantity", "minimal_quantity"),
                              ("ean13", "ean13")):
                 val = row.get(src)
-                if val not in (None, ""):
-                    simple[dst] = str(val)
+                if val in (None, ""):
+                    continue
+                # The combination price impact is a delta on the base price.
+                # If the sheet's impacts include tax, convert to tax-excluded
+                # (same rule as product prices) so the storefront total stays
+                # round after PrestaShop adds VAT back.
+                if (dst == "price" and self.config.price_includes_tax
+                        and self.config.tax_rate > 0):
+                    num = parse_number(str(val))
+                    if num is not None:
+                        divisor = (Decimal(1)
+                                   + Decimal(str(self.config.tax_rate)) / Decimal(100))
+                        simple[dst] = f"{(num / divisor):.6f}"
+                        continue
+                simple[dst] = str(val)
             if str(row.get("default", "")).strip() in ("1", "true", "yes"):
                 simple["default_on"] = "1"
 

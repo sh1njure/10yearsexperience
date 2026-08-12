@@ -40,8 +40,8 @@ function setMode(mode) {
     ? ["combinations", "stock", "images", "descriptions"]
     : ["products"];
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
-  // Tax conversion only applies to product prices.
-  $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");
+  // Tax conversion applies to product prices AND combination price impacts.
+  $("#priceTaxRow").classList.remove("hidden");
   $("#modeOverlay").classList.add("hidden");
 }
 $$("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
