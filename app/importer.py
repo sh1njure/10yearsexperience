@@ -251,11 +251,16 @@ class Importer:
     async def _create(self, index: int, reference: str, simple: dict,
                       associations: dict, image_urls: list[str], schema: str,
                       row: dict, notes: list[str]) -> RowResult:
-        # PrestaShop 8 needs an explicit product_type; a blank one hides the
-        # price and add-to-cart on the storefront. New products are "standard"
-        # (a later combinations import upgrades them to "combinations"). Only on
-        # create — never override the type of an existing product on update.
+        # Defaults the Webservice does NOT apply on create, which otherwise leave
+        # a product non-purchasable on the storefront:
+        #  - product_type: a blank type hides price + add-to-cart (PS8).
+        #  - available_for_order = 1: without it there is no add-to-basket.
+        #  - show_price = 1: without it the price is hidden.
+        # Create-only (setdefault also respects a mapped column) so updates never
+        # clobber a merchant's deliberate settings.
         simple.setdefault("product_type", "standard")
+        simple.setdefault("available_for_order", "1")
+        simple.setdefault("show_price", "1")
         payload = xml_builder.build_create_xml(
             schema, simple, lang_id=self.config.lang_id,
             associations=associations,
