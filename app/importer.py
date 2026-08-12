@@ -251,6 +251,11 @@ class Importer:
     async def _create(self, index: int, reference: str, simple: dict,
                       associations: dict, image_urls: list[str], schema: str,
                       row: dict, notes: list[str]) -> RowResult:
+        # PrestaShop 8 needs an explicit product_type; a blank one hides the
+        # price and add-to-cart on the storefront. New products are "standard"
+        # (a later combinations import upgrades them to "combinations"). Only on
+        # create — never override the type of an existing product on update.
+        simple.setdefault("product_type", "standard")
         payload = xml_builder.build_create_xml(
             schema, simple, lang_id=self.config.lang_id,
             associations=associations,
