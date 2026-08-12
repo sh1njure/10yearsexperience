@@ -270,6 +270,7 @@ $("#btnRun").addEventListener("click", () => {
     create_missing: $("#createMissing").checked,
     price_includes_tax: $("#priceInclTax").checked,
     tax_rate: parseFloat($("#taxRate").value) || 0,
+    round_up_to: parseFloat($("#roundUp").value) || 0,
     import_type: S.importType,
   };
   runImport(payload);

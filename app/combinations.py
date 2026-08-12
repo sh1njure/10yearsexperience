@@ -14,7 +14,7 @@ from xml.etree import ElementTree as ET
 
 from .api_client import PrestaShopClient
 from .resolver import Resolver, parse_attribute_pairs, split_list
-from .importer import ImportConfig, Mode, RowResult, ProgressCb, _with_retry
+from .importer import ImportConfig, Mode, RowResult, ProgressCb, _with_retry, ceil_to
 from .validator import parse_number
 from .combination_descriptions import CombinationDescriptionImporter
 from . import xml_builder
@@ -33,6 +33,8 @@ class CombinationImporter:
         # Reused to set a per-combination description in the same pass, when the
         # "descriptions" scope is on and the row carries description text.
         self.desc_importer = CombinationDescriptionImporter(client, config)
+        # Base (net) price per product, for rounding combination totals.
+        self._base_net_cache: dict[int, Decimal] = {}
 
     async def _schema(self) -> str:
         if self._blank_schema is None:
@@ -84,19 +86,10 @@ class CombinationImporter:
                 val = row.get(src)
                 if val in (None, ""):
                     continue
-                # The combination price impact is a delta on the base price.
-                # If the sheet's impacts include tax, convert to tax-excluded
-                # (same rule as product prices) so the storefront total stays
-                # round after PrestaShop adds VAT back.
-                if (dst == "price" and self.config.price_includes_tax
-                        and self.config.tax_rate > 0):
-                    num = parse_number(str(val))
-                    if num is not None:
-                        divisor = (Decimal(1)
-                                   + Decimal(str(self.config.tax_rate)) / Decimal(100))
-                        simple[dst] = f"{(num / divisor):.6f}"
-                        continue
-                simple[dst] = str(val)
+                if dst == "price":
+                    simple[dst] = await self._impact_value(str(val), product_id)
+                else:
+                    simple[dst] = str(val)
             if str(row.get("default", "")).strip() in ("1", "true", "yes"):
                 simple["default_on"] = "1"
 
@@ -194,6 +187,47 @@ class CombinationImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    async def _impact_value(self, raw: str, product_id: int) -> str:
+        """Combination price impact (net delta) to store.
+
+        Converts a tax-included impact to tax-excluded, and — when round-up is on
+        — rounds the combination's FINAL gross price (base + impact) up to the
+        configured increment, then back-calculates the net impact.
+        """
+        num = parse_number(raw)
+        if num is None:
+            return raw
+        includes = self.config.price_includes_tax and self.config.tax_rate > 0
+        if not includes:
+            return raw  # stored as-is (no tax context to round against)
+
+        divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
+        impact_gross = Decimal(str(num))
+
+        if self.config.round_up_to > 0:
+            base_net = await self._product_base_net(product_id)
+            final_gross = base_net * divisor + impact_gross
+            final_gross = ceil_to(final_gross, Decimal(str(self.config.round_up_to)))
+            impact_net = final_gross / divisor - base_net
+            return f"{impact_net:.6f}"
+        return f"{(impact_gross / divisor):.6f}"
+
+    async def _product_base_net(self, product_id: int) -> Decimal:
+        """Fetch (and cache) the product's stored base net price."""
+        if product_id in self._base_net_cache:
+            return self._base_net_cache[product_id]
+        price = Decimal(0)
+        try:
+            data = await self.client.get_json(
+                f"products/{product_id}", params={"display": "[price]"})
+            prod = data.get("product") if isinstance(data, dict) else None
+            if isinstance(prod, dict) and prod.get("price") not in (None, ""):
+                price = Decimal(str(prod["price"]))
+        except Exception:
+            price = Decimal(0)
+        self._base_net_cache[product_id] = price
+        return price
 
     @staticmethod
     def _desc_shop_id(row: dict[str, object]) -> int | None:

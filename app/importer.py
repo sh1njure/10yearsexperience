@@ -15,9 +15,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 from enum import Enum
 from typing import Awaitable, Callable
+
+
+def ceil_to(value: Decimal, step: Decimal) -> Decimal:
+    """Round ``value`` UP to the nearest multiple of ``step`` (e.g. 50.2 -> 50.5
+    for step 0.5). Returns ``value`` unchanged when ``step`` <= 0."""
+    if step <= 0:
+        return value
+    return (value / step).to_integral_value(rounding=ROUND_CEILING) * step
 
 from .api_client import PrestaShopClient, PrestaShopError
 from .resolver import Resolver, parse_features, split_list
@@ -62,6 +70,9 @@ class ImportConfig:
     # tax-excluded value the API expects gets stored.
     price_includes_tax: bool = False
     tax_rate: float = 0.0
+    # Round the final incl-VAT price UP to the nearest multiple of this (e.g.
+    # 0.50 → prices end in .0/.5). 0 disables. Needs price_includes_tax.
+    round_up_to: float = 0.0
 
 
 ProgressCb = Callable[[RowResult], Awaitable[None]] | None
@@ -145,8 +156,12 @@ class Importer:
                 and simple.get("price")):
             num = parse_number(str(simple["price"]))
             if num is not None:
+                gross = Decimal(str(num))
+                # Round the customer-facing gross UP first, then store the net.
+                if self.config.round_up_to > 0:
+                    gross = ceil_to(gross, Decimal(str(self.config.round_up_to)))
                 divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
-                simple["price"] = f"{(num / divisor):.6f}"
+                simple["price"] = f"{(gross / divisor):.6f}"
 
         associations: dict[str, object] = {}
         image_urls: list[str] = []

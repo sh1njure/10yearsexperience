@@ -67,6 +67,7 @@ class RunIn(BaseModel):
     create_missing: bool = False
     price_includes_tax: bool = False
     tax_rate: float = 0.0
+    round_up_to: float = 0.0
     import_type: str = "products"
     profile_name: str | None = None
 
@@ -102,6 +103,7 @@ async def run(token: str, payload: RunIn):
         create_missing=payload.create_missing,
         price_includes_tax=payload.price_includes_tax,
         tax_rate=payload.tax_rate,
+        round_up_to=payload.round_up_to,
     )
     run_id = db.create_run(payload.mode, payload.dry_run, len(rows),
                            payload.profile_name)

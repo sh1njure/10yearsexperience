@@ -348,6 +348,7 @@
         <div id="priceTaxRow" class="switchline mt-3">
           <label title="Prices in the sheet include VAT; the API needs the tax-excluded value. On by default (23%)."><input id="priceInclTax" type="checkbox" checked> Price includes VAT — convert to tax-excluded</label>
           <label>VAT rate % <input id="taxRate" type="number" value="23" min="0" step="0.1" class="field ml-1" style="width:84px"></label>
+          <label title="Round the final incl-VAT price UP to the nearest step (e.g. 0.50 → prices end in .0/.5). 0 = off.">Round up to <input id="roundUp" type="number" value="0.5" min="0" step="0.05" class="field ml-1" style="width:84px"></label>
         </div>
 
         <div class="flex gap-2 mt-5">
