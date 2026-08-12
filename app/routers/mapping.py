@@ -55,9 +55,12 @@ async def automatch(token: str, resource: str = "products",
                 schema = await client.fetch_schema(resource)
             except PrestaShopError as exc:
                 raise HTTPException(502, f"Could not fetch schema: {exc}") from exc
-        # Augment product fields with synthetic association targets.
+        # Augment product fields with synthetic targets. "quantity" is included
+        # because PS8's product schema doesn't expose it (stock is set via
+        # stock_availables), yet the importer reads a "quantity" column to set
+        # stock — without this it fuzzy-matches to "unity" and stock is lost.
         field_names = schema.field_names()
-        for special in ("categories", "tags", "images", "features"):
+        for special in ("categories", "tags", "images", "features", "quantity"):
             if special not in field_names:
                 field_names = field_names + [special]
 
