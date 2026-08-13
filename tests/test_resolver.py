@@ -111,3 +111,20 @@ def test_combination_associations_xml():
         associations={"product_option_values": [10, 20]})
     assert "<product_option_value><id>10</id></product_option_value>" in xml
     assert "<product_option_value><id>20</id></product_option_value>" in xml
+
+
+# ---------------- case-insensitive attribute matching ---------------- #
+def test_norm_is_case_and_space_insensitive():
+    from app.resolver import Resolver
+    assert Resolver._norm("Colour Temperature") == Resolver._norm("colour temperature")
+    assert Resolver._norm("  Colour   temperature ") == "colour temperature"
+
+
+def test_extract_ml_name_handles_shapes():
+    from app.resolver import Resolver
+    r = Resolver.__new__(Resolver)   # no network; just need lang_id
+    r.lang_id = 1
+    assert r._extract_ml_name("Colour") == "Colour"
+    assert r._extract_ml_name({"value": "Colour"}) == "Colour"
+    assert r._extract_ml_name([{"id": "1", "value": "Colour"}, {"id": "2", "value": "Couleur"}]) == "Colour"
+    assert r._extract_ml_name(None) is None

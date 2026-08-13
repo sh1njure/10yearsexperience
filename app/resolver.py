@@ -169,6 +169,9 @@ class Resolver:
         self._group_cache: dict[str, int | None] = {}
         self._value_cache: dict[tuple[int, str], int | None] = {}
         self._schemas: dict[str, str] = {}
+        # Attribute group / value lists for case-insensitive reuse.
+        self._all_groups: list[tuple[int, str]] | None = None
+        self._group_values: dict[int, list[tuple[int, str]]] = {}
 
     # ------------------------------------------------------------------ #
     async def _schema(self, resource: str) -> str:
@@ -319,11 +322,67 @@ class Resolver:
                 ids.append(value_id)
         return ids
 
+    @staticmethod
+    def _norm(name: str) -> str:
+        """Normalise an attribute/value name for case-insensitive matching."""
+        return " ".join(str(name or "").split()).lower()
+
+    def _extract_ml_name(self, name: object) -> str | None:
+        """Pull a plain string out of a Webservice multilang name field, which
+        may arrive as a string, a {value} dict, or a list of {id,value} langs."""
+        if name is None:
+            return None
+        if isinstance(name, str):
+            return name
+        if isinstance(name, dict):
+            return name.get("value") or name.get("#text")
+        if isinstance(name, list):
+            for entry in name:
+                if isinstance(entry, dict) and str(entry.get("id")) == str(self.lang_id):
+                    return entry.get("value")
+            if name and isinstance(name[0], dict):
+                return name[0].get("value")
+        return None
+
+    async def _load_groups(self) -> list[tuple[int, str]]:
+        if self._all_groups is None:
+            data = await self.client.get_json(
+                "product_options", params={"display": "[id,name]"})
+            items = data.get("product_options") if isinstance(data, dict) else None
+            out: list[tuple[int, str]] = []
+            if isinstance(items, list):
+                for g in items:
+                    gid = g.get("id") if isinstance(g, dict) else None
+                    gname = self._extract_ml_name(g.get("name")) if isinstance(g, dict) else None
+                    if gid and gname is not None:
+                        out.append((int(gid), gname))
+            self._all_groups = out
+        return self._all_groups
+
+    async def _load_group_values(self, group_id: int) -> list[tuple[int, str]]:
+        if group_id not in self._group_values:
+            data = await self.client.get_json(
+                "product_option_values",
+                params={"filter[id_attribute_group]": group_id, "display": "[id,name]"})
+            items = data.get("product_option_values") if isinstance(data, dict) else None
+            out: list[tuple[int, str]] = []
+            if isinstance(items, list):
+                for v in items:
+                    vid = v.get("id") if isinstance(v, dict) else None
+                    vname = self._extract_ml_name(v.get("name")) if isinstance(v, dict) else None
+                    if vid and vname is not None:
+                        out.append((int(vid), vname))
+            self._group_values[group_id] = out
+        return self._group_values[group_id]
+
     async def _resolve_attribute_group(self, name: str, group_type: str,
                                        position: str) -> int | None:
-        if name in self._group_cache:
-            return self._group_cache[name]
-        gid = await self._find_id("product_options", {"name": name})
+        key = self._norm(name)
+        if key in self._group_cache:
+            return self._group_cache[key]
+        # Case-insensitive reuse of an existing group before creating one.
+        gid = next((gid for gid, gname in await self._load_groups()
+                    if self._norm(gname) == key), None)
         if gid is None and self.create_missing:
             schema = await self._schema("product_options")
             values = {
@@ -336,17 +395,19 @@ class Resolver:
             xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
             result = await self.client.create("product_options", xml)
             gid = result.get("id")
-        self._group_cache[name] = gid
+            if gid and self._all_groups is not None:
+                self._all_groups.append((int(gid), name))  # so re-runs reuse it
+        self._group_cache[key] = gid
         return gid
 
     async def _resolve_attribute_value(self, group_id: int, value: str,
                                        position: str, is_color: bool = False) -> int | None:
-        cache_key = (group_id, value)
+        cache_key = (group_id, self._norm(value))
         if cache_key in self._value_cache:
             return self._value_cache[cache_key]
-        vid = await self._find_id(
-            "product_option_values",
-            {"id_attribute_group": group_id, "name": value})
+        # Case-insensitive reuse within the group before creating.
+        vid = next((vid for vid, vname in await self._load_group_values(group_id)
+                    if self._norm(vname) == self._norm(value)), None)
         if vid is None and self.create_missing:
             schema = await self._schema("product_option_values")
             values = {
@@ -357,6 +418,8 @@ class Resolver:
             xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
             result = await self.client.create("product_option_values", xml)
             vid = result.get("id")
+            if vid and group_id in self._group_values:
+                self._group_values[group_id].append((int(vid), value))
         self._value_cache[cache_key] = vid
         return vid
 
