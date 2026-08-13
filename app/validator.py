@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
 # PrestaShop fields that must be present for a product to be created.
-DEFAULT_REQUIRED_FIELDS = ["reference", "name", "price"]
+DEFAULT_REQUIRED_FIELDS = ["reference", "name"]
+
+# Recommended but NOT blocking: a missing value only warns. Price is here (not
+# required) because variant-priced products carry no base price — it comes from
+# their combinations — so a blank base price is legitimate.
+RECOMMENDED_FIELDS = ["price"]
 
 # Fields that must parse as a number when present.
 NUMERIC_FIELDS = {"price", "wholesale_price", "weight", "width", "height",
@@ -64,6 +69,13 @@ def validate(rows: list[dict[str, object]], mapped_fields: set[str], *,
                                 f"Required field '{req}' is not mapped.",
                                 "error"))
 
+    # 1b. Recommended fields: warn (do not block) if not mapped.
+    for rec in RECOMMENDED_FIELDS:
+        if rec not in mapped_fields:
+            issues.append(Issue(None, rec,
+                                f"Recommended field '{rec}' is not mapped.",
+                                "warning"))
+
     # 2. Per-row checks.
     seen_refs: dict[str, int] = {}
     for i, row in enumerate(rows):
@@ -72,6 +84,15 @@ def validate(rows: list[dict[str, object]], mapped_fields: set[str], *,
             if req in mapped_fields and not str(row.get(req, "")).strip():
                 issues.append(Issue(i, req,
                                     f"Missing required value '{req}'.", "error"))
+
+        # Recommended values: warn only (e.g. blank base price on a
+        # variant-priced product; the base is stored as 0 and the price comes
+        # from its combinations).
+        for rec in RECOMMENDED_FIELDS:
+            if rec in mapped_fields and not str(row.get(rec, "")).strip():
+                issues.append(Issue(i, rec,
+                                    f"No '{rec}' — base stored as 0 "
+                                    f"(ok if priced by combinations).", "warning"))
 
         # Numeric fields parse.
         for fld in NUMERIC_FIELDS & mapped_fields:
