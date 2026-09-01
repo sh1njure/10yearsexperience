@@ -39,10 +39,50 @@ function setMode(mode) {
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
   // Tax conversion only applies to product prices.
   $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");
+  // Export button mirrors the chosen type.
+  const exp = $("#btnExport");
+  exp.textContent = "Export " + (S.importType === "combinations" ? "combinations" : "products");
+  exp.classList.remove("hidden");
   $("#modeOverlay").classList.add("hidden");
 }
 $$("[data-mode]").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.mode)));
 $("#btnChangeMode").addEventListener("click", () => $("#modeOverlay").classList.remove("hidden"));
+
+// ------------------------------- export ------------------------------- //
+function showExportMsg(text, kind) {
+  const el = $("#exportMsg");
+  el.textContent = text;
+  const base = "fixed bottom-4 right-4 text-sm px-3 py-2 rounded-lg shadow-lg ";
+  el.className = base + (kind === "err" ? "bg-red-600 text-white"
+    : kind === "ok" ? "bg-green-600 text-white" : "bg-slate-800 text-white");
+  el.classList.remove("hidden");
+  if (kind !== "info") setTimeout(() => el.classList.add("hidden"), 5000);
+}
+
+async function exportData() {
+  const kind = S.importType;
+  showExportMsg(`Exporting ${kind}… (reading the shop)`, "info");
+  try {
+    const res = await fetch(`/api/export/${kind}`);
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.detail || res.statusText);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = cd.match(/filename="?([^"]+)"?/);
+    const name = m ? m[1] : `${kind}_export.xlsx`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showExportMsg(`Exported ${name}`, "ok");
+  } catch (e) {
+    showExportMsg("Export failed: " + e.message, "err");
+  }
+}
+$("#btnExport").addEventListener("click", exportData);
 
 // ------------------------------ settings ------------------------------ //
 async function loadSettings() {

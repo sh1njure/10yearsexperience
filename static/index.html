@@ -56,8 +56,10 @@
       </div>
       <div class="flex items-center gap-2 shrink-0">
         <span id="modeBadge" class="hidden text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100"></span>
+        <button id="btnExport" class="hidden text-xs btn-primary px-3 py-1 rounded-md" title="Download current shop data as a template file">Export</button>
         <button id="btnChangeMode" class="text-xs btn-ghost px-2.5 py-1 rounded-md">Change</button>
       </div>
+      <div id="exportMsg" class="fixed bottom-4 right-4 hidden text-sm px-3 py-2 rounded-lg shadow-lg"></div>
     </header>
 
     <nav class="flex gap-1 border-b border-slate-200 mb-6" id="tabs">

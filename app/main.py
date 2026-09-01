@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import BASE_DIR, get_settings
 from .db import init_db
 from .routers import import_ as import_router
+from .routers import export as export_router
 from .routers import mapping, settings, upload
 
 STATIC_DIR = BASE_DIR / "static"
@@ -39,6 +40,7 @@ app.include_router(settings.router)
 app.include_router(upload.router)
 app.include_router(mapping.router)
 app.include_router(import_router.router)
+app.include_router(export_router.router)
 
 
 @app.get("/")
