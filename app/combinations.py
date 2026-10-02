@@ -151,6 +151,17 @@ class CombinationImporter:
                 except Exception as exc:
                     notes.append(f"images not attached ({exc})")
 
+            # Per-combination description -> the custom module resource
+            # (combination_descriptions), linked to this combination.
+            if (combo_id and "descriptions" in self.config.scope
+                    and str(row.get("description", "")).strip()):
+                try:
+                    await self._write_description(product_id, combo_id,
+                                                  str(row["description"]))
+                    notes.append("description set")
+                except Exception as exc:
+                    notes.append(f"description not set ({exc})")
+
             if combo_id and "stock" in self.config.scope:
                 try:
                     await self._set_stock(product_id, combo_id, row.get("quantity"))
@@ -167,6 +178,38 @@ class CombinationImporter:
         except Exception as exc:  # continue-on-error
             return RowResult(index, reference, "error", False,
                              message=f"{type(exc).__name__}: {exc}")
+
+    async def _write_description(self, product_id: int, combo_id: int,
+                                 html: str, resource: str = "combination_descriptions") -> None:
+        """Upsert a per-combination description into the custom module resource.
+
+        Field names come from the module's live ?schema=blank (nothing
+        hardcoded): the combination link (id_product_attribute), the product
+        (id_product) and the description text are filled where those fields
+        exist. Multilingual description is wrapped automatically.
+        """
+        # Find an existing record for this combination, if any.
+        existing_id = await self.resolver._find_id(
+            resource, {"id_product_attribute": combo_id})
+        values = {
+            "id_product_attribute": str(combo_id),
+            "id_product": str(product_id),
+            "description": html,
+        }
+        if existing_id:
+            existing = await self.client.get_xml(f"{resource}/{existing_id}")
+            payload = xml_builder.build_update_xml(
+                existing, values, lang_id=self.config.lang_id)
+            await _with_retry(
+                lambda: self.client.update(resource, existing_id, payload),
+                max_retries=self.config.max_retries)
+        else:
+            schema = await self.resolver._schema(resource)
+            payload = xml_builder.build_create_xml(
+                schema, values, lang_id=self.config.lang_id)
+            await _with_retry(
+                lambda: self.client.create(resource, payload),
+                max_retries=self.config.max_retries)
 
     async def _attach_images(self, product_id: int, combo_id: int,
                              urls: list[str]) -> int:

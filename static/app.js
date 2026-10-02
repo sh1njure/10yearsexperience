@@ -35,7 +35,7 @@ function setMode(mode) {
   badge.textContent = "Mode: " + (S.importType === "combinations" ? "Combinations" : "Products");
   badge.classList.remove("hidden");
   // Sensible default scope per mode.
-  const on = S.importType === "combinations" ? ["combinations", "stock", "images"] : ["products"];
+  const on = S.importType === "combinations" ? ["combinations", "stock", "images", "descriptions"] : ["products"];
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
   // Tax conversion only applies to product prices.
   $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");

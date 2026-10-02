@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/mapping", tags=["mapping"])
 COMBINATION_TARGETS = [
     "product_reference", "attributes", "values", "reference",
     "supplier_reference", "ean13", "price_impact", "quantity",
-    "minimal_quantity", "default", "images",
+    "minimal_quantity", "default", "images", "description",
 ]
 
 
