@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_CEILING
 from enum import Enum
 from typing import Awaitable, Callable
 
@@ -151,12 +151,12 @@ class Importer:
                 divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
                 simple["price"] = f"{(num / divisor):.6f}"
 
-        # Round the price to the nearest step so it ends in 0/5 (step 0.05).
+        # Round the price UP to the nearest step so it ends in .00 or .50.
         if self.config.price_round and self.config.price_round > 0 and simple.get("price"):
             num = parse_number(str(simple["price"]))
             if num is not None:
                 step = Decimal(str(self.config.price_round))
-                rounded = (num / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * step
+                rounded = (num / step).quantize(Decimal("1"), rounding=ROUND_CEILING) * step
                 simple["price"] = f"{rounded:.2f}"
 
         associations: dict[str, object] = {}
