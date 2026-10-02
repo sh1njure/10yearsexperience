@@ -89,7 +89,12 @@ class PrestaShopClient:
 
     def __init__(self, base_url: str, api_key: str, *, timeout: float = 30.0,
                  default_lang_id: int = 1, max_retries: int = 2):
-        self.base_url = base_url.rstrip("/")
+        base_url = base_url.strip().rstrip("/")
+        # Accept "https://shop.tld/api" as well as "https://shop.tld".
+        if base_url.lower().endswith("/api"):
+            base_url = base_url[:-4]
+        self.base_url = base_url
+        api_key = api_key.strip()
         self.api_key = api_key
         self.default_lang_id = default_lang_id
         self.max_retries = max_retries
@@ -97,6 +102,9 @@ class PrestaShopClient:
         self._auth = httpx.BasicAuth(api_key, "")
         self._client = httpx.AsyncClient(
             auth=self._auth,
+            # Also send the key as ?ws_key=... — many Apache/FastCGI hosts drop
+            # the Authorization header before PHP sees it, which causes a 401.
+            params={"ws_key": api_key},
             timeout=timeout,
             follow_redirects=True,
         )
