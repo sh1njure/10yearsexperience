@@ -164,6 +164,12 @@
           <label title="Create categories, brands, tags, features and attributes that don't exist yet">
             <input id="createMissing" type="checkbox"> Create missing records
           </label>
+          <label title="Round each price to the nearest step so it ends in 0 or 5">
+            <input id="roundPrice" type="checkbox"> Round price to end in 0/5
+          </label>
+          <label>step
+            <input id="roundStep" type="number" value="0.05" min="0.01" step="0.01" class="ml-1 w-20 field px-2 py-1">
+          </label>
         </div>
         <div id="priceTaxRow" class="flex gap-4 items-end flex-wrap text-sm">
           <label title="If your price column includes tax, the API needs the tax-excluded value">

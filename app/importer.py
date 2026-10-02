@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from enum import Enum
 from typing import Awaitable, Callable
 
@@ -62,6 +62,9 @@ class ImportConfig:
     # tax-excluded value the API expects gets stored.
     price_includes_tax: bool = False
     tax_rate: float = 0.0
+    # Round the price to the nearest multiple of this (e.g. 0.05 → ends in 0/5).
+    # 0 disables rounding.
+    price_round: float = 0.0
 
 
 ProgressCb = Callable[[RowResult], Awaitable[None]] | None
@@ -147,6 +150,14 @@ class Importer:
             if num is not None:
                 divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
                 simple["price"] = f"{(num / divisor):.6f}"
+
+        # Round the price to the nearest step so it ends in 0/5 (step 0.05).
+        if self.config.price_round and self.config.price_round > 0 and simple.get("price"):
+            num = parse_number(str(simple["price"]))
+            if num is not None:
+                step = Decimal(str(self.config.price_round))
+                rounded = (num / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * step
+                simple["price"] = f"{rounded:.2f}"
 
         associations: dict[str, object] = {}
         image_urls: list[str] = []
