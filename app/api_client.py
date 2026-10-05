@@ -147,9 +147,16 @@ class PrestaShopClient:
                 raise PrestaShopError(f"Request to {url} failed: {exc}") from exc
 
             if resp.status_code == 401:
+                ps_msg = self.extract_error_message(resp.text)
+                detail = f" — {ps_msg}" if ps_msg else ""
                 raise PrestaShopError(
-                    "Authentication failed (401). Check the Webservice API key "
-                    "and that the Webservice is enabled.",
+                    f"401 Unauthorized on {method.upper()} /api/"
+                    f"{path.lstrip('/') or ''}{detail}. The key was rejected for "
+                    "THIS request. Common cause: the Webservice key lacks "
+                    "permission for this resource/method — e.g. POST/PUT (write) "
+                    "not granted. Test connection only checks GET, so it can be "
+                    "green while writes still 401. Grant the needed permissions "
+                    "in Advanced Parameters -> Webservice.",
                     status_code=401, body=resp.text,
                 )
             if retryable and 500 <= resp.status_code < 600 and attempt < attempts - 1:
