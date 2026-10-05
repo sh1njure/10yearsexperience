@@ -6,12 +6,22 @@ from pydantic import BaseModel
 
 from ..api_client import PrestaShopClient, PrestaShopError
 from ..config import get_settings, update_connection
+from .. import db
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Resources whose schema the mapper cares about.
 SCHEMA_RESOURCES = ["products", "categories", "stock_availables",
                     "combinations", "manufacturers"]
+
+
+def _persist(s) -> None:
+    """Save connection settings to the DB so they survive container rebuilds."""
+    db.save_settings({
+        "prestashop_url": s.normalized_url,
+        "prestashop_api_key": s.prestashop_api_key,
+        "default_lang_id": str(s.default_lang_id),
+    })
 
 
 class ConnectionIn(BaseModel):
@@ -36,8 +46,9 @@ def read_settings() -> dict:
 
 @router.post("")
 def write_settings(payload: ConnectionIn) -> dict:
-    """Update the live connection settings (not persisted to .env)."""
-    update_connection(payload.url, payload.api_key, payload.default_lang_id)
+    """Update the live connection settings and persist them to the DB."""
+    s = update_connection(payload.url, payload.api_key, payload.default_lang_id)
+    _persist(s)
     return read_settings()
 
 
@@ -47,6 +58,8 @@ async def test_connection(payload: ConnectionIn) -> dict:
     s = update_connection(payload.url, payload.api_key, payload.default_lang_id)
     if not s.normalized_url or not s.prestashop_api_key:
         return {"ok": False, "error": "Shop URL and API key are required."}
+    # A successful test means these creds are good — persist them.
+    _persist(s)
 
     async with PrestaShopClient(s.normalized_url, s.prestashop_api_key,
                                 default_lang_id=s.default_lang_id) as client:

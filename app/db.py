@@ -34,6 +34,11 @@ CREATE TABLE IF NOT EXISTS import_runs (
     profile_name TEXT,
     summary      TEXT                         -- JSON per-row results
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
 """
 
 
@@ -140,3 +145,24 @@ def list_runs(limit: int = 50) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------- #
+# App settings (persist connection across container rebuilds)           #
+# --------------------------------------------------------------------- #
+def save_settings(values: dict[str, str]) -> None:
+    with connect() as conn:
+        for key, value in values.items():
+            if value is None:
+                continue
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(value)),
+            )
+
+
+def get_saved_settings() -> dict[str, str]:
+    with connect() as conn:
+        rows = conn.execute("SELECT key, value FROM app_settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}

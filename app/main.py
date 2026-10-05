@@ -13,7 +13,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import BASE_DIR, get_settings
+from .config import BASE_DIR, get_settings, update_connection
+from . import db
 from .db import init_db
 from .routers import import_ as import_router
 from .routers import export as export_router
@@ -27,6 +28,15 @@ app = FastAPI(title="PrestaShop Supplier Importer", version="0.1.0")
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Restore connection settings saved in the DB (survives container rebuilds).
+    saved = db.get_saved_settings()
+    if saved:
+        update_connection(
+            url=saved.get("prestashop_url") or None,
+            api_key=saved.get("prestashop_api_key") or None,
+            default_lang_id=int(saved["default_lang_id"])
+            if saved.get("default_lang_id", "").isdigit() else None,
+        )
 
 
 @app.get("/api/health")
