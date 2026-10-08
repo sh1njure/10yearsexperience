@@ -143,21 +143,25 @@ class Importer:
         # Force the "saved" state so the product actually shows up.
         simple.setdefault("state", "1")
 
-        # Convert a tax-included price to the tax-excluded value the API stores.
-        if (self.config.price_includes_tax and self.config.tax_rate > 0
-                and simple.get("price")):
+        # Price: round the customer-facing (tax-INCLUDED) price up to .00/.50,
+        # then store the tax-excluded value the API expects.
+        #   * price_includes_tax: the column is already tax-included.
+        #   * otherwise with a tax rate: compute the included price first.
+        #   * rounding is applied to the included price so what the shopper sees
+        #     ends in .00/.50 (rounding the excluded price did not).
+        if simple.get("price") and (self.config.price_includes_tax
+                                    or (self.config.price_round or 0) > 0):
             num = parse_number(str(simple["price"]))
             if num is not None:
-                divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
-                simple["price"] = f"{(num / divisor):.6f}"
-
-        # Round the price UP to the nearest step so it ends in .00 or .50.
-        if self.config.price_round and self.config.price_round > 0 and simple.get("price"):
-            num = parse_number(str(simple["price"]))
-            if num is not None:
-                step = Decimal(str(self.config.price_round))
-                rounded = (num / step).quantize(Decimal("1"), rounding=ROUND_CEILING) * step
-                simple["price"] = f"{rounded:.2f}"
+                rate = (Decimal(str(self.config.tax_rate)) / Decimal(100)
+                        if self.config.tax_rate > 0 else Decimal(0))
+                incl = num if self.config.price_includes_tax else num * (Decimal(1) + rate)
+                if (self.config.price_round or 0) > 0:
+                    step = Decimal(str(self.config.price_round))
+                    incl = (incl / step).quantize(Decimal("1"),
+                                                  rounding=ROUND_CEILING) * step
+                excl = incl / (Decimal(1) + rate) if rate > 0 else incl
+                simple["price"] = f"{excl:.6f}"
 
         associations: dict[str, object] = {}
         image_urls: list[str] = []
