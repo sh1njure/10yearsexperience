@@ -107,64 +107,75 @@ def build_create_xml(blank_schema_xml: str, values: dict[str, object], *,
     return _serialize(root)
 
 
+def _append_assoc(assoc_el: ET.Element, key: str, items) -> None:
+    """Append one association sub-block (categories/tags/features/…)."""
+    items = items or []
+    if not items:
+        return
+    if key == "categories":
+        parent = ET.SubElement(assoc_el, "categories")
+        for cid in items:
+            c = ET.SubElement(parent, "category")
+            ET.SubElement(c, "id").text = str(cid)
+    elif key == "tags":
+        parent = ET.SubElement(assoc_el, "tags")
+        for tid in items:
+            t = ET.SubElement(parent, "tag")
+            ET.SubElement(t, "id").text = str(tid)
+    elif key == "product_features":
+        parent = ET.SubElement(assoc_el, "product_features")
+        for feat_id, value_id in items:
+            pf = ET.SubElement(parent, "product_feature")
+            ET.SubElement(pf, "id").text = str(feat_id)
+            ET.SubElement(pf, "id_feature_value").text = str(value_id)
+    elif key == "product_option_values":
+        parent = ET.SubElement(assoc_el, "product_option_values")
+        for vid in items:
+            pov = ET.SubElement(parent, "product_option_value")
+            ET.SubElement(pov, "id").text = str(vid)
+    elif key == "images":
+        parent = ET.SubElement(assoc_el, "images")
+        for iid in items:
+            im = ET.SubElement(parent, "image")
+            ET.SubElement(im, "id").text = str(iid)
+
+
 def _set_associations(resource_el: ET.Element, associations: dict[str, object]) -> None:
-    """Replace/add the <associations> block with resolved relations."""
-    # Remove any skeleton associations element and rebuild cleanly.
+    """Replace the whole <associations> block with the provided relations."""
     for existing in [el for el in resource_el if _localname(el.tag) == "associations"]:
         resource_el.remove(existing)
     assoc_el = ET.SubElement(resource_el, "associations")
-
-    categories = associations.get("categories") or []
-    if categories:
-        cats = ET.SubElement(assoc_el, "categories")
-        for cid in categories:
-            c = ET.SubElement(cats, "category")
-            ET.SubElement(c, "id").text = str(cid)
-
-    tags = associations.get("tags") or []
-    if tags:
-        tags_el = ET.SubElement(assoc_el, "tags")
-        for tid in tags:
-            t = ET.SubElement(tags_el, "tag")
-            ET.SubElement(t, "id").text = str(tid)
-
-    features = associations.get("product_features") or []
-    if features:
-        feats = ET.SubElement(assoc_el, "product_features")
-        for feat_id, value_id in features:
-            pf = ET.SubElement(feats, "product_feature")
-            ET.SubElement(pf, "id").text = str(feat_id)
-            ET.SubElement(pf, "id_feature_value").text = str(value_id)
-
-    # Combination -> attribute value links.
-    option_values = associations.get("product_option_values") or []
-    if option_values:
-        povs = ET.SubElement(assoc_el, "product_option_values")
-        for vid in option_values:
-            pov = ET.SubElement(povs, "product_option_value")
-            ET.SubElement(pov, "id").text = str(vid)
-
-    # Image links (used by combinations to reference product images).
-    images = associations.get("images") or []
-    if images:
-        imgs = ET.SubElement(assoc_el, "images")
-        for iid in images:
-            im = ET.SubElement(imgs, "image")
-            ET.SubElement(im, "id").text = str(iid)
-
-    # If nothing was added, drop the empty element again.
+    for key in ("categories", "tags", "product_features",
+                "product_option_values", "images"):
+        _append_assoc(assoc_el, key, associations.get(key))
     if len(assoc_el) == 0:
         resource_el.remove(assoc_el)
 
 
+def _merge_associations(resource_el: ET.Element, associations: dict[str, object]) -> None:
+    """Replace only the provided association types, keep the rest (for updates)."""
+    assoc_el = next((el for el in resource_el
+                     if _localname(el.tag) == "associations"), None)
+    if assoc_el is None:
+        assoc_el = ET.SubElement(resource_el, "associations")
+    for key, items in associations.items():
+        # Drop the existing sub-block for this type, then re-add it.
+        for ex in [e for e in assoc_el if _localname(e.tag) == key]:
+            assoc_el.remove(ex)
+        _append_assoc(assoc_el, key, items)
+
+
 def build_update_xml(existing_resource_xml: str, values: dict[str, object], *,
                      multilingual_fields: set[str] | None = None,
-                     lang_id: int = 1) -> str:
+                     lang_id: int = 1,
+                     associations: dict[str, object] | None = None) -> str:
     """Return XML for a PUT.
 
     Starts from the *full existing resource* (fetched via GET) so unmapped
     fields are preserved — partial PUTs wipe fields. Only mapped fields are
-    overwritten; read-only fields are stripped.
+    overwritten; read-only fields are stripped. ``associations`` (when given)
+    replaces only those relation types (categories/tags/product_features/…)
+    while keeping any others the resource already has.
     """
     root = ET.fromstring(existing_resource_xml)
     resource_el = next(iter(root), None)
@@ -197,6 +208,8 @@ def build_update_xml(existing_resource_xml: str, values: dict[str, object], *,
                 for child in list(el):
                     el.remove(child)
                 el.text = str(values[name])
+    if associations:
+        _merge_associations(resource_el, associations)
     return _serialize(root)
 
 

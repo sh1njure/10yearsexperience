@@ -125,3 +125,20 @@ def test_build_update_stock_available_keeps_id_and_quantity():
     assert _find(root, "id").text == "124"
     assert _find(root, "quantity").text == "10"
     assert _find(root, "id_product").text == "55"
+
+
+def test_build_update_merges_associations():
+    """Update must apply features/categories while keeping other associations."""
+    existing = ("<?xml version='1.0'?><prestashop><product><id>7</id>"
+                "<reference>W/MARTA</reference><price>10.0</price>"
+                "<associations><images><image><id>100</id></image></images>"
+                "<product_features><product_feature><id>1</id>"
+                "<id_feature_value>5</id_feature_value></product_feature>"
+                "</product_features></associations></product></prestashop>")
+    xml = xml_builder.build_update_xml(
+        existing, {"price": "35.06"},
+        associations={"product_features": [(3, 11), (4, 12)], "categories": [2, 9]})
+    assert "<images><image><id>100</id></image></images>" in xml  # kept
+    assert xml.count("<product_feature>") == 2  # replaced
+    assert "<category><id>9</id></category>" in xml  # added
+    assert "<price>35.06</price>" in xml

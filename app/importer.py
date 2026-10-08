@@ -283,6 +283,7 @@ class Importer:
         existing = await self.client.get_xml(f"products/{product_id}")
         payload = xml_builder.build_update_xml(
             existing, simple, lang_id=self.config.lang_id,
+            associations=associations,
         )
         await _with_retry(
             lambda: self.client.update("products", product_id, payload),
