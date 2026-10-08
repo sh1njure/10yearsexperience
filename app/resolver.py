@@ -66,6 +66,48 @@ def split_list(raw: str) -> list[str]:
     return [p.strip() for p in str(raw).split(",") if p.strip()]
 
 
+def _shrink_image(data: bytes, filename: str, content_type: str,
+                  max_bytes: int) -> tuple[bytes, str, str]:
+    """Re-encode/downscale an image so it fits under ``max_bytes``.
+
+    Returns the original bytes unchanged if already small enough or if Pillow
+    is unavailable / the image can't be processed.
+    """
+    if len(data) <= max_bytes:
+        return data, filename, content_type
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        if img.mode in ("RGBA", "P", "LA"):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            img = img.convert("RGBA")
+            background.paste(img, mask=img.split()[-1])
+            img = background
+        else:
+            img = img.convert("RGB")
+        name = filename.rsplit(".", 1)[0] + ".jpg"
+
+        max_dim = 1600
+        if max(img.size) > max_dim:
+            img.thumbnail((max_dim, max_dim))
+        for _ in range(8):
+            for quality in (85, 75, 65, 55):
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=quality, optimize=True)
+                out = buf.getvalue()
+                if len(out) <= max_bytes:
+                    return out, name, "image/jpeg"
+            # Still too big — shrink dimensions and try again.
+            w, h = img.size
+            if max(w, h) <= 500:
+                break
+            img.thumbnail((int(w * 0.8), int(h * 0.8)))
+        return out, name, "image/jpeg"  # best effort
+    except Exception:
+        return data, filename, content_type
+
+
 @dataclass
 class AttributePair:
     group_name: str
@@ -313,11 +355,17 @@ class Resolver:
         return await self._find_id("products", {"reference": reference})
 
     # ------------------------------- images --------------------------- #
-    async def fetch_image(self, url: str) -> tuple[bytes, str, str]:
-        """Download an image URL; return (bytes, filename, content_type)."""
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as c:
+    async def fetch_image(self, url: str,
+                          max_bytes: int = 1_900_000) -> tuple[bytes, str, str]:
+        """Download an image URL; shrink it if it exceeds the shop's size limit.
+
+        PrestaShop rejects images over ~2 MB. If the download is larger, it is
+        re-encoded (and downscaled) so it fits, instead of failing the upload.
+        Returns (bytes, filename, content_type).
+        """
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as c:
             resp = await c.get(url)
             resp.raise_for_status()
         content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
         filename = url.rsplit("/", 1)[-1] or "image.jpg"
-        return resp.content, filename, content_type
+        return _shrink_image(resp.content, filename, content_type, max_bytes)
