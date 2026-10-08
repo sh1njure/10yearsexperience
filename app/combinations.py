@@ -9,7 +9,7 @@ Reuses the products importer's retry/result plumbing.
 from __future__ import annotations
 
 import asyncio
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal
 from xml.etree import ElementTree as ET
 
 from .api_client import PrestaShopClient
@@ -83,15 +83,16 @@ class CombinationImporter:
             if str(row.get("default", "")).strip() in ("1", "true", "yes"):
                 simple["default_on"] = "1"
 
-            # Round the combination price (impact) UP to .00/.50 if requested.
-            if (self.config.price_round and self.config.price_round > 0
+            # The combination 'price' field is a TAX-EXCLUDED impact. When the
+            # sheet's impact is tax-included (e.g. "+10" means +€10 on the shelf),
+            # divide it back so the shop re-adds VAT to the intended amount
+            # instead of inflating it (10 -> 10*1.23 = 12.30).
+            if (self.config.price_includes_tax and self.config.tax_rate > 0
                     and simple.get("price")):
                 num = parse_number(str(simple["price"]))
                 if num is not None:
-                    step = Decimal(str(self.config.price_round))
-                    rounded = (num / step).quantize(Decimal("1"),
-                                                    rounding=ROUND_CEILING) * step
-                    simple["price"] = f"{rounded:.2f}"
+                    divisor = Decimal(1) + Decimal(str(self.config.tax_rate)) / Decimal(100)
+                    simple["price"] = f"{(num / divisor):.6f}"
 
             associations = {"product_option_values": value_ids} if value_ids else {}
             schema = await self._schema()
