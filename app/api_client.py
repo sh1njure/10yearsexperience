@@ -306,20 +306,23 @@ class PrestaShopClient:
     # ------------------------------------------------------------------ #
     # Writes                                                             #
     # ------------------------------------------------------------------ #
-    async def create(self, resource: str, xml_payload: str) -> dict:
+    async def create(self, resource: str, xml_payload: str,
+                     params: dict | None = None) -> dict:
         """POST an XML payload; return the parsed created resource summary."""
         resp = await self._request(
-            "POST", resource, content=xml_payload.encode("utf-8"),
+            "POST", resource, params=params,
+            content=xml_payload.encode("utf-8"),
             headers={"Content-Type": "text/xml"},
         )
         self._raise_for_ps_errors(resp)
         return {"status_code": resp.status_code, "body": resp.text,
                 "id": self._extract_id(resp.text)}
 
-    async def update(self, resource: str, resource_id: int, xml_payload: str) -> dict:
+    async def update(self, resource: str, resource_id: int, xml_payload: str,
+                     params: dict | None = None) -> dict:
         """PUT a full XML payload back for an existing resource."""
         resp = await self._request(
-            "PUT", f"{resource}/{resource_id}",
+            "PUT", f"{resource}/{resource_id}", params=params,
             content=xml_payload.encode("utf-8"),
             headers={"Content-Type": "text/xml"},
         )

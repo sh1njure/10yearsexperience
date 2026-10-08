@@ -183,32 +183,34 @@ class CombinationImporter:
                                  html: str, resource: str = "combination_descriptions") -> None:
         """Upsert a per-combination description into the custom module resource.
 
-        Field names come from the module's live ?schema=blank (nothing
-        hardcoded): the combination link (id_product_attribute), the product
-        (id_product) and the description text are filled where those fields
-        exist. Multilingual description is wrapped automatically.
+        This module's resource crashes PrestaShop's XML output renderer
+        ("Array to string conversion" in WebserviceOutputXML.php), so we never
+        read the existing record as XML. Instead we find its id via a JSON id
+        query, build the payload from the blank schema, and ask for a JSON
+        response on the write to avoid the broken XML renderer entirely.
         """
-        # Find an existing record for this combination, if any.
-        existing_id = await self.resolver._find_id(
-            resource, {"id_product_attribute": combo_id})
+        schema = await self.resolver._schema(resource)
         values = {
             "id_product_attribute": str(combo_id),
             "id_product": str(product_id),
             "description": html,
         }
+        json_resp = {"output_format": "JSON"}
+        existing_id = await self.resolver._find_id(
+            resource, {"id_product_attribute": combo_id})
         if existing_id:
-            existing = await self.client.get_xml(f"{resource}/{existing_id}")
+            values["id"] = str(existing_id)  # required in a PUT body
             payload = xml_builder.build_update_xml(
-                existing, values, lang_id=self.config.lang_id)
+                schema, values, lang_id=self.config.lang_id)
             await _with_retry(
-                lambda: self.client.update(resource, existing_id, payload),
+                lambda: self.client.update(resource, existing_id, payload,
+                                           params=json_resp),
                 max_retries=self.config.max_retries)
         else:
-            schema = await self.resolver._schema(resource)
             payload = xml_builder.build_create_xml(
                 schema, values, lang_id=self.config.lang_id)
             await _with_retry(
-                lambda: self.client.create(resource, payload),
+                lambda: self.client.create(resource, payload, params=json_resp),
                 max_retries=self.config.max_retries)
 
     async def _attach_images(self, product_id: int, combo_id: int,
