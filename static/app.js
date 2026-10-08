@@ -37,8 +37,8 @@ function setMode(mode) {
   // Sensible default scope per mode.
   const on = S.importType === "combinations" ? ["combinations", "stock", "images", "descriptions"] : ["products"];
   $$(".scope").forEach((c) => { c.checked = on.includes(c.value); });
-  // Tax conversion only applies to product prices.
-  $("#priceTaxRow").classList.toggle("hidden", S.importType === "combinations");
+  // Tax conversion applies to product prices AND combination impacts.
+  $("#priceTaxRow").classList.remove("hidden");
   // Export button mirrors the chosen type.
   const exp = $("#btnExport");
   exp.textContent = "Export " + (S.importType === "combinations" ? "combinations" : "products");
