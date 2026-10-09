@@ -157,3 +157,58 @@ async def export_combinations(client: PrestaShopClient, lang_id: int) -> list[li
             c.get("default_on", ""),
         ])
     return rows
+
+
+async def attributes_report(client: PrestaShopClient, lang_id: int) -> dict:
+    """Report every attribute group/value, how many combinations use each,
+    and flag duplicates (same name) and unused ones (0 combinations)."""
+    def norm(s: str) -> str:
+        return " ".join(str(s or "").strip().lower().split())
+
+    gdata = await client.get_json("product_options", params={"display": "[id,name]"})
+    groups = {str(g["id"]): _ml(g.get("name"), lang_id)
+              for g in (gdata.get("product_options", []) if isinstance(gdata, dict) else [])}
+
+    vdata = await client.get_json(
+        "product_option_values", params={"display": "[id,id_attribute_group,name]"})
+    values = []
+    for v in (vdata.get("product_option_values", []) if isinstance(vdata, dict) else []):
+        values.append({"id": str(v["id"]), "group_id": str(v.get("id_attribute_group")),
+                       "name": _ml(v.get("name"), lang_id)})
+
+    # Count combination usage per value id.
+    usage: dict[str, int] = {}
+    cdata = await client.get_json("combinations", params={"display": "full"})
+    for c in (cdata.get("combinations", []) if isinstance(cdata, dict) else []):
+        assoc = c.get("associations", {}) if isinstance(c, dict) else {}
+        povs = assoc.get("product_option_values")
+        if isinstance(povs, dict):
+            povs = [povs]
+        for x in (povs or []):
+            if isinstance(x, dict) and x.get("id"):
+                usage[str(x["id"])] = usage.get(str(x["id"]), 0) + 1
+
+    # Duplicate detection.
+    gname_count: dict[str, int] = {}
+    for gid, gname in groups.items():
+        gname_count[norm(gname)] = gname_count.get(norm(gname), 0) + 1
+    vkey_count: dict[tuple, int] = {}
+    for v in values:
+        k = (v["group_id"], norm(v["name"]))
+        vkey_count[k] = vkey_count.get(k, 0) + 1
+
+    group_rows = []
+    for gid, gname in sorted(groups.items(), key=lambda kv: norm(kv[1])):
+        gvals = [v for v in values if v["group_id"] == gid]
+        group_rows.append({
+            "id": gid, "name": gname,
+            "dup_group": gname_count.get(norm(gname), 0) > 1,
+            "value_count": len(gvals),
+            "used_total": sum(usage.get(v["id"], 0) for v in gvals),
+            "values": [{
+                "id": v["id"], "name": v["name"],
+                "used": usage.get(v["id"], 0),
+                "dup_value": vkey_count.get((gid, norm(v["name"])), 0) > 1,
+            } for v in sorted(gvals, key=lambda x: norm(x["name"]))],
+        })
+    return {"groups": group_rows}
