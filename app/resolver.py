@@ -19,6 +19,23 @@ from .api_client import PrestaShopClient, PrestaShopError, _localname
 from . import xml_builder
 
 
+def _ml_value(value: object, lang_id: int) -> str:
+    """Extract a single-language string from a multilingual JSON field."""
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict) and str(item.get("id")) == str(lang_id):
+                return str(item.get("value", "") or "")
+        if value and isinstance(value[0], dict):
+            return str(value[0].get("value", "") or "")
+        return ""
+    return "" if value is None else str(value)
+
+
+def _norm_name(s: object) -> str:
+    """Normalise an attribute/value name for case/space-insensitive matching."""
+    return " ".join(str(s or "").strip().lower().split())
+
+
 @dataclass
 class FeatureSpec:
     name: str
@@ -161,6 +178,13 @@ class Resolver:
         self._group_cache: dict[str, int | None] = {}
         self._value_cache: dict[tuple[int, str], int | None] = {}
         self._schemas: dict[str, str] = {}
+        # Normalized lookups of ALL existing attribute groups/values, loaded
+        # once, so re-imports reuse them (case/space-insensitive) instead of
+        # creating duplicates — the filter[name] API lookup is unreliable for
+        # multilingual fields.
+        self._group_by_norm: dict[str, int] = {}
+        self._value_by_norm: dict[tuple[int, str], int] = {}
+        self._attrs_loaded = False
         # Serialize find-or-create so concurrent rows don't both create the
         # same category/brand/attribute (which races into a 500 on insert).
         self._lock = asyncio.Lock()
@@ -329,51 +353,78 @@ class Resolver:
                 ids.append(value_id)
         return ids
 
+    async def _load_attributes(self) -> None:
+        """Load all existing attribute groups + values once, normalized."""
+        if self._attrs_loaded:
+            return
+        async with self._lock:
+            if self._attrs_loaded:
+                return
+            gdata = await self.client.get_json(
+                "product_options", params={"display": "[id,name]"})
+            for g in (gdata.get("product_options", []) if isinstance(gdata, dict) else []):
+                gid = g.get("id")
+                if gid:
+                    self._group_by_norm[_norm_name(_ml_value(g.get("name"), self.lang_id))] = int(gid)
+            vdata = await self.client.get_json(
+                "product_option_values",
+                params={"display": "[id,id_attribute_group,name]"})
+            for v in (vdata.get("product_option_values", []) if isinstance(vdata, dict) else []):
+                vid = v.get("id")
+                grp = v.get("id_attribute_group")
+                if vid and grp:
+                    key = (int(grp), _norm_name(_ml_value(v.get("name"), self.lang_id)))
+                    self._value_by_norm[key] = int(vid)
+            self._attrs_loaded = True
+
     async def _resolve_attribute_group(self, name: str, group_type: str,
                                        position: str) -> int | None:
-        if name in self._group_cache:
-            return self._group_cache[name]
+        await self._load_attributes()
+        key = _norm_name(name)
+        if key in self._group_by_norm:
+            return self._group_by_norm[key]
+        if not self.create_missing:
+            return None
         async with self._lock:
-            if name in self._group_cache:
-                return self._group_cache[name]
-            gid = await self._find_id("product_options", {"name": name})
-            if gid is None and self.create_missing:
-                schema = await self._schema("product_options")
-                values = {
-                    "name": name,
-                    "public_name": name,
-                    "group_type": group_type or "select",
-                    "is_color_group": "1" if group_type == "color" else "0",
-                    "position": position or "0",
-                }
-                xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
-                result = await self.client.create("product_options", xml)
-                gid = result.get("id")
-            self._group_cache[name] = gid
+            if key in self._group_by_norm:
+                return self._group_by_norm[key]
+            schema = await self._schema("product_options")
+            values = {
+                "name": name,
+                "public_name": name,
+                "group_type": group_type or "select",
+                "is_color_group": "1" if group_type == "color" else "0",
+                "position": position or "0",
+            }
+            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+            result = await self.client.create("product_options", xml)
+            gid = result.get("id")
+            if gid:
+                self._group_by_norm[key] = int(gid)
             return gid
 
     async def _resolve_attribute_value(self, group_id: int, value: str,
                                        position: str, is_color: bool = False) -> int | None:
-        cache_key = (group_id, value)
-        if cache_key in self._value_cache:
-            return self._value_cache[cache_key]
+        await self._load_attributes()
+        key = (int(group_id), _norm_name(value))
+        if key in self._value_by_norm:
+            return self._value_by_norm[key]
+        if not self.create_missing:
+            return None
         async with self._lock:
-            if cache_key in self._value_cache:
-                return self._value_cache[cache_key]
-            vid = await self._find_id(
-                "product_option_values",
-                {"id_attribute_group": group_id, "name": value})
-            if vid is None and self.create_missing:
-                schema = await self._schema("product_option_values")
-                values = {
-                    "id_attribute_group": str(group_id),
-                    "name": value,
-                    "position": position or "0",
-                }
-                xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
-                result = await self.client.create("product_option_values", xml)
-                vid = result.get("id")
-            self._value_cache[cache_key] = vid
+            if key in self._value_by_norm:
+                return self._value_by_norm[key]
+            schema = await self._schema("product_option_values")
+            values = {
+                "id_attribute_group": str(group_id),
+                "name": value,
+                "position": position or "0",
+            }
+            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+            result = await self.client.create("product_option_values", xml)
+            vid = result.get("id")
+            if vid:
+                self._value_by_norm[key] = int(vid)
             return vid
 
     async def find_product_id(self, reference: str) -> int | None:
