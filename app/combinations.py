@@ -80,8 +80,11 @@ class CombinationImporter:
                 val = row.get(src)
                 if val not in (None, ""):
                     simple[dst] = str(val)
-            if str(row.get("default", "")).strip() in ("1", "true", "yes"):
-                simple["default_on"] = "1"
+            # NOTE: default_on is deliberately NOT set on create/update — doing
+            # so triggers PrestaShop's default-combination reassignment during
+            # the write, which can 500 on some shops. It is set afterwards in a
+            # separate, non-fatal step so the combination itself always gets in.
+            want_default = str(row.get("default", "")).strip() in ("1", "true", "yes")
 
             # The combination 'price' field is a TAX-EXCLUDED impact. When the
             # sheet's impact is tax-included (e.g. "+10" means +€10 on the shelf),
@@ -140,6 +143,13 @@ class CombinationImporter:
                     max_retries=self.config.max_retries)
                 combo_id = created.get("id")
                 action = "created"
+
+            # Mark as default in a separate, non-fatal step (see note above).
+            if combo_id and want_default:
+                try:
+                    await self._set_default(combo_id)
+                except Exception as exc:
+                    notes.append(f"default not set ({exc})")
 
             # PrestaShop 8 only shows the Combinations tab when the product's
             # type is "combinations"; API-created products are "standard".
@@ -279,6 +289,15 @@ class CombinationImporter:
             existing, {"product_type": "combinations"}, lang_id=self.config.lang_id)
         await _with_retry(
             lambda: self.client.update("products", product_id, payload),
+            max_retries=self.config.max_retries)
+
+    async def _set_default(self, combo_id: int) -> None:
+        """Flag a combination as the product default, separately from create."""
+        existing = await self.client.get_xml(f"combinations/{combo_id}")
+        payload = xml_builder.build_update_xml(
+            existing, {"default_on": "1"}, lang_id=self.config.lang_id)
+        await _with_retry(
+            lambda: self.client.update("combinations", combo_id, payload),
             max_retries=self.config.max_retries)
 
     async def _find_combination(self, reference: str) -> int | None:
