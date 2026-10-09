@@ -10,6 +10,7 @@ All network work goes through :class:`~app.api_client.PrestaShopClient`.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 import httpx
@@ -160,6 +161,9 @@ class Resolver:
         self._group_cache: dict[str, int | None] = {}
         self._value_cache: dict[tuple[int, str], int | None] = {}
         self._schemas: dict[str, str] = {}
+        # Serialize find-or-create so concurrent rows don't both create the
+        # same category/brand/attribute (which races into a 500 on insert).
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ #
     async def _schema(self, resource: str) -> str:
@@ -191,11 +195,14 @@ class Resolver:
     async def _resolve_category(self, name: str) -> int | None:
         if name in self._cat_cache:
             return self._cat_cache[name]
-        cid = await self._find_id("categories", {"name": name})
-        if cid is None and self.create_missing:
-            cid = await self._create_category(name)
-        self._cat_cache[name] = cid
-        return cid
+        async with self._lock:
+            if name in self._cat_cache:
+                return self._cat_cache[name]
+            cid = await self._find_id("categories", {"name": name})
+            if cid is None and self.create_missing:
+                cid = await self._create_category(name)
+            self._cat_cache[name] = cid
+            return cid
 
     async def _create_category(self, name: str, id_parent: int = 2) -> int | None:
         schema = await self._schema("categories")
@@ -216,15 +223,18 @@ class Resolver:
             return None
         if name in self._man_cache:
             return self._man_cache[name]
-        mid = await self._find_id("manufacturers", {"name": name})
-        if mid is None and self.create_missing:
-            schema = await self._schema("manufacturers")
-            xml = xml_builder.build_create_xml(
-                schema, {"name": name, "active": "1"}, lang_id=self.lang_id)
-            result = await self.client.create("manufacturers", xml)
-            mid = result.get("id")
-        self._man_cache[name] = mid
-        return mid
+        async with self._lock:
+            if name in self._man_cache:
+                return self._man_cache[name]
+            mid = await self._find_id("manufacturers", {"name": name})
+            if mid is None and self.create_missing:
+                schema = await self._schema("manufacturers")
+                xml = xml_builder.build_create_xml(
+                    schema, {"name": name, "active": "1"}, lang_id=self.lang_id)
+                result = await self.client.create("manufacturers", xml)
+                mid = result.get("id")
+            self._man_cache[name] = mid
+            return mid
 
     # -------------------------------- tags ---------------------------- #
     async def resolve_tags(self, names: list[str]) -> list[int]:
@@ -238,16 +248,19 @@ class Resolver:
     async def _resolve_tag(self, name: str) -> int | None:
         if name in self._tag_cache:
             return self._tag_cache[name]
-        tid = await self._find_id("tags", {"name": name})
-        if tid is None and self.create_missing:
-            schema = await self._schema("tags")
-            xml = xml_builder.build_create_xml(
-                schema, {"name": name, "id_lang": str(self.lang_id)},
-                lang_id=self.lang_id)
-            result = await self.client.create("tags", xml)
-            tid = result.get("id")
-        self._tag_cache[name] = tid
-        return tid
+        async with self._lock:
+            if name in self._tag_cache:
+                return self._tag_cache[name]
+            tid = await self._find_id("tags", {"name": name})
+            if tid is None and self.create_missing:
+                schema = await self._schema("tags")
+                xml = xml_builder.build_create_xml(
+                    schema, {"name": name, "id_lang": str(self.lang_id)},
+                    lang_id=self.lang_id)
+                result = await self.client.create("tags", xml)
+                tid = result.get("id")
+            self._tag_cache[name] = tid
+            return tid
 
     # ------------------------------ features -------------------------- #
     async def resolve_features(self, specs: list[FeatureSpec]) -> list[tuple[int, int]]:
@@ -265,34 +278,40 @@ class Resolver:
     async def _resolve_feature(self, name: str) -> int | None:
         if name in self._feat_cache:
             return self._feat_cache[name]
-        fid = await self._find_id("product_features", {"name": name})
-        if fid is None and self.create_missing:
-            schema = await self._schema("product_features")
-            xml = xml_builder.build_create_xml(
-                schema, {"name": name}, lang_id=self.lang_id)
-            result = await self.client.create("product_features", xml)
-            fid = result.get("id")
-        self._feat_cache[name] = fid
-        return fid
+        async with self._lock:
+            if name in self._feat_cache:
+                return self._feat_cache[name]
+            fid = await self._find_id("product_features", {"name": name})
+            if fid is None and self.create_missing:
+                schema = await self._schema("product_features")
+                xml = xml_builder.build_create_xml(
+                    schema, {"name": name}, lang_id=self.lang_id)
+                result = await self.client.create("product_features", xml)
+                fid = result.get("id")
+            self._feat_cache[name] = fid
+            return fid
 
     async def _resolve_feature_value(self, feature_id: int, value: str,
                                      customized: str = "0") -> int | None:
         cache_key = (feature_id, value)
         if cache_key in self._featval_cache:
             return self._featval_cache[cache_key]
-        vid = await self._find_id("product_feature_values",
-                                  {"id_feature": feature_id, "value": value})
-        if vid is None and self.create_missing:
-            schema = await self._schema("product_feature_values")
-            xml = xml_builder.build_create_xml(
-                schema,
-                {"id_feature": str(feature_id), "value": value,
-                 "custom": "1" if customized in ("1", "true") else "0"},
-                lang_id=self.lang_id)
-            result = await self.client.create("product_feature_values", xml)
-            vid = result.get("id")
-        self._featval_cache[cache_key] = vid
-        return vid
+        async with self._lock:
+            if cache_key in self._featval_cache:
+                return self._featval_cache[cache_key]
+            vid = await self._find_id("product_feature_values",
+                                      {"id_feature": feature_id, "value": value})
+            if vid is None and self.create_missing:
+                schema = await self._schema("product_feature_values")
+                xml = xml_builder.build_create_xml(
+                    schema,
+                    {"id_feature": str(feature_id), "value": value,
+                     "custom": "1" if customized in ("1", "true") else "0"},
+                    lang_id=self.lang_id)
+                result = await self.client.create("product_feature_values", xml)
+                vid = result.get("id")
+            self._featval_cache[cache_key] = vid
+            return vid
 
     # ---------------------- attributes (combinations) ----------------- #
     async def resolve_attribute_value_ids(self, pairs: list[AttributePair]) -> list[int]:
@@ -314,42 +333,48 @@ class Resolver:
                                        position: str) -> int | None:
         if name in self._group_cache:
             return self._group_cache[name]
-        gid = await self._find_id("product_options", {"name": name})
-        if gid is None and self.create_missing:
-            schema = await self._schema("product_options")
-            values = {
-                "name": name,
-                "public_name": name,
-                "group_type": group_type or "select",
-                "is_color_group": "1" if group_type == "color" else "0",
-                "position": position or "0",
-            }
-            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
-            result = await self.client.create("product_options", xml)
-            gid = result.get("id")
-        self._group_cache[name] = gid
-        return gid
+        async with self._lock:
+            if name in self._group_cache:
+                return self._group_cache[name]
+            gid = await self._find_id("product_options", {"name": name})
+            if gid is None and self.create_missing:
+                schema = await self._schema("product_options")
+                values = {
+                    "name": name,
+                    "public_name": name,
+                    "group_type": group_type or "select",
+                    "is_color_group": "1" if group_type == "color" else "0",
+                    "position": position or "0",
+                }
+                xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+                result = await self.client.create("product_options", xml)
+                gid = result.get("id")
+            self._group_cache[name] = gid
+            return gid
 
     async def _resolve_attribute_value(self, group_id: int, value: str,
                                        position: str, is_color: bool = False) -> int | None:
         cache_key = (group_id, value)
         if cache_key in self._value_cache:
             return self._value_cache[cache_key]
-        vid = await self._find_id(
-            "product_option_values",
-            {"id_attribute_group": group_id, "name": value})
-        if vid is None and self.create_missing:
-            schema = await self._schema("product_option_values")
-            values = {
-                "id_attribute_group": str(group_id),
-                "name": value,
-                "position": position or "0",
-            }
-            xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
-            result = await self.client.create("product_option_values", xml)
-            vid = result.get("id")
-        self._value_cache[cache_key] = vid
-        return vid
+        async with self._lock:
+            if cache_key in self._value_cache:
+                return self._value_cache[cache_key]
+            vid = await self._find_id(
+                "product_option_values",
+                {"id_attribute_group": group_id, "name": value})
+            if vid is None and self.create_missing:
+                schema = await self._schema("product_option_values")
+                values = {
+                    "id_attribute_group": str(group_id),
+                    "name": value,
+                    "position": position or "0",
+                }
+                xml = xml_builder.build_create_xml(schema, values, lang_id=self.lang_id)
+                result = await self.client.create("product_option_values", xml)
+                vid = result.get("id")
+            self._value_cache[cache_key] = vid
+            return vid
 
     async def find_product_id(self, reference: str) -> int | None:
         return await self._find_id("products", {"reference": reference})
