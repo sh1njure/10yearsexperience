@@ -108,6 +108,13 @@ class CombinationImporter:
                                  product_id=product_id, payload=payload)
 
             existing_id = await self._find_combination(reference) if reference else None
+            # Not found by reference? A combination with this exact attribute set
+            # may already exist (under a different/empty reference). PrestaShop
+            # rejects a duplicate attribute set with a 500, so find and update it
+            # instead of creating a conflicting duplicate.
+            if existing_id is None and value_ids:
+                existing_id = await self._find_combination_by_attributes(
+                    product_id, value_ids)
             if existing_id and self.config.mode == Mode.CREATE_ONLY:
                 return RowResult(index, reference, "skipped", True,
                                  "Combination exists; create-only mode.")
@@ -283,6 +290,32 @@ class CombinationImporter:
             first = items[0]
             cid = first.get("id") if isinstance(first, dict) else first
             return int(cid) if cid else None
+        return None
+
+    async def _find_combination_by_attributes(self, product_id: int,
+                                               value_ids: list[int]) -> int | None:
+        """Find an existing combination on the product with this exact value set.
+
+        PrestaShop forbids two combinations with the same attribute values, and
+        a leftover one may carry a different reference, so match by the set of
+        product_option_value ids instead.
+        """
+        want = {str(v) for v in value_ids}
+        data = await self.client.get_json(
+            "combinations",
+            params={"filter[id_product]": product_id, "display": "full"})
+        combos = data.get("combinations") if isinstance(data, dict) else None
+        if not combos:
+            return None
+        for combo in combos:
+            assoc = combo.get("associations", {}) if isinstance(combo, dict) else {}
+            povs = assoc.get("product_option_values")
+            if isinstance(povs, dict):
+                povs = [povs]
+            have = {str(x.get("id")) for x in (povs or []) if isinstance(x, dict)}
+            if have == want:
+                cid = combo.get("id")
+                return int(cid) if cid else None
         return None
 
     async def _set_stock(self, product_id: int, combo_id: int,
